@@ -1,7 +1,7 @@
 import { BrowserOAuthClient } from '@atproto/oauth-client-browser';
 import { Agent } from '@atproto/api';
 import { toDataURL } from 'qrcode';
-import { Html5Qrcode } from 'html5-qrcode';
+import jsQR from 'jsqr';
 
 export const BADGE_BLUE_KEYS_NSID = 'com.publicdomainrelay.temp.badgeBlueKeys';
 
@@ -48,7 +48,7 @@ export function associationUrl(didKey) {
 
 /* ── QR scanning ── */
 let qrStream = null;
-let html5QrScanner = null;
+let qrAnimFrame = null;
 
 export function didFromScanValue(value) {
   if (value.startsWith('did:key:') || value.startsWith('did:plc:')) return value;
@@ -60,76 +60,203 @@ export function didFromScanValue(value) {
   return null;
 }
 
+let _fileOnCapture = null;
+
 export function startQRScanner({ onScan, onStatus, containerEl, videoEl }) {
   containerEl.style.display = "block";
+  hideFileBtn(containerEl);
+  onStatus?.('', '');
 
   const onCapture = (did) => {
     onScan(did);
     stopQRScanner();
   };
 
-  if ('BarcodeDetector' in window) {
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+  // iOS-required video attributes — set before stream touches element
+  for (const [attr, val] of [['muted', ''], ['playsinline', ''], ['webkit-playsinline', ''], ['autoplay', '']]) {
+    videoEl.setAttribute(attr, val);
+  }
+  videoEl.style.display = '';
+
+  // Wait for layout (container just un-hidden, iOS needs computed dimensions)
+  requestAnimationFrame(() => {
+    onStatus?.('Requesting camera...', '');
+
+    // Create canvas for frame capture
+    let canvas = containerEl.querySelector('#qr-canvas');
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      canvas.id = 'qr-canvas';
+      canvas.style.cssText = 'display:none;';
+      containerEl.appendChild(canvas);
+    }
+
+    const constraints = { video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } } };
+    navigator.mediaDevices.getUserMedia(constraints)
       .then(stream => {
         qrStream = stream;
-        videoEl.srcObject = stream;
-        videoEl.style.display = '';
-        onStatus?.('Scanning... point camera at a QR code.', '');
-        const detector = new BarcodeDetector({ formats: ['qr_code'] });
-        const scan = async () => {
+
+        // Detach/re-attach — fixes iOS WebKit rendering blackout (#310349)
+        videoEl.srcObject = null;
+        setTimeout(() => {
           if (!qrStream) return;
-          try {
-            const barcodes = await detector.detect(videoEl);
-            if (barcodes.length > 0) {
-              const did = didFromScanValue(barcodes[0].rawValue);
-              if (did) { onCapture(did); return; }
-              onStatus?.('Scanned but not a did:key. Keep scanning.', 'danger');
-            }
-          } catch (e) { /* may throw on some frames */ }
-          if (qrStream) requestAnimationFrame(scan);
-        };
-        requestAnimationFrame(scan);
+          videoEl.onloadedmetadata = () => videoEl.play().catch(() => {});
+          videoEl.srcObject = qrStream;
+        }, 80);
+
+        onStatus?.('Scanning... point camera at a QR code.', '');
+
+        // BarcodeDetector path (Chrome/Edge) — fast native API
+        if ('BarcodeDetector' in window) {
+          const detector = new BarcodeDetector({ formats: ['qr_code'] });
+          const scan = async () => {
+            if (!qrStream) return;
+            try {
+              const barcodes = await detector.detect(videoEl);
+              if (barcodes.length > 0) {
+                const did = didFromScanValue(barcodes[0].rawValue);
+                if (did) { onCapture(did); return; }
+                onStatus?.('Scanned but not a did:key. Keep scanning.', 'danger');
+              }
+            } catch (e) { /* may throw on some frames */ }
+            if (qrStream) qrAnimFrame = requestAnimationFrame(scan);
+          };
+          qrAnimFrame = requestAnimationFrame(scan);
+        } else {
+          // Safari/iOS: canvas + jsQR scan loop
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          let lastScan = 0;
+          const SCAN_INTERVAL = 250; // ms between decode attempts
+
+          const scan = () => {
+            if (!qrStream) return;
+            qrAnimFrame = requestAnimationFrame(scan);
+
+            const now = performance.now();
+            if (now - lastScan < SCAN_INTERVAL) return;
+            lastScan = now;
+
+            if (videoEl.readyState < 2) return; // no frame data yet
+
+            try {
+              canvas.width = videoEl.videoWidth;
+              canvas.height = videoEl.videoHeight;
+              if (canvas.width === 0 || canvas.height === 0) return;
+              ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const code = jsQR(imageData.data, imageData.width, imageData.height);
+              if (code) {
+                const did = didFromScanValue(code.data);
+                if (did) onCapture(did);
+              }
+            } catch (e) { /* skip bad frames */ }
+          };
+          qrAnimFrame = requestAnimationFrame(scan);
+        }
       })
-      .catch(() => {
+      .catch((err) => {
         if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
-        fallbackQRScanner(onCapture, onStatus);
+        const reason = err.name === 'NotAllowedError' ? 'Camera permission denied. ' :
+          err.name === 'NotFoundError' ? 'No camera found. ' : `Camera error: ${err.message}. `;
+        onStatus?.(`${reason}Tap "Take Photo" below.`, 'danger');
+        showFileBtn(containerEl, onCapture, onStatus);
       });
-    return;
-  }
-  fallbackQRScanner(onCapture, onStatus, containerEl, videoEl);
+  });
 }
 
-function fallbackQRScanner(onCapture, onStatus) {
-  try {
-    html5QrScanner = new Html5Qrcode("qr-video");
-    onStatus?.('Scanning... point camera at a QR code.', '');
-    html5QrScanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      (decodedText) => {
-        const did = didFromScanValue(decodedText);
-        if (did) onCapture(did);
-      },
-      () => { /* ignore scan errors */ }
-    );
-  } catch (err) {
-    onStatus?.(`Camera error: ${err.message}`, 'danger');
+function getFileBtn(containerEl) {
+  let wrapper = containerEl.querySelector('#qr-file-wrapper');
+  if (!wrapper) {
+    wrapper = document.createElement('div');
+    wrapper.id = 'qr-file-wrapper';
+    wrapper.style.cssText = 'display:none;margin-top:12px;';
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.id = 'qr-file-input';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.style.cssText = 'display:none;';
+    const label = document.createElement('label');
+    label.setAttribute('for', 'qr-file-input');
+    label.className = 'btn btn-secondary btn-block';
+    label.style.cssText = 'cursor:pointer;';
+    label.textContent = 'Take Photo';
+    wrapper.appendChild(input);
+    wrapper.appendChild(label);
+    containerEl.appendChild(wrapper);
+
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const statusEl = containerEl.querySelector('#qr-scan-status');
+      if (statusEl) statusEl.textContent = 'Decoding QR from photo...';
+      try {
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        URL.revokeObjectURL(img.src);
+        if (code) {
+          const did = didFromScanValue(code.data);
+          if (did && _fileOnCapture) {
+            if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
+            _fileOnCapture(did);
+            return;
+          }
+        }
+        if (statusEl) { statusEl.textContent = 'No did:key found in image. Try again.'; statusEl.style.color = 'var(--danger)'; }
+      } catch (e) {
+        if (statusEl) { statusEl.textContent = `Scan failed: ${e.message || e}. Try again.`; statusEl.style.color = 'var(--danger)'; }
+      }
+    });
   }
+  return wrapper;
+}
+
+function showFileBtn(containerEl, onCapture, onStatus) {
+  _fileOnCapture = onCapture;
+  const wrapper = getFileBtn(containerEl);
+  wrapper.style.display = '';
+  const input = wrapper.querySelector('#qr-file-input');
+  input.value = '';
+}
+
+function hideFileBtn(containerEl) {
+  const wrapper = containerEl.querySelector('#qr-file-wrapper');
+  if (wrapper) wrapper.style.display = 'none';
+  _fileOnCapture = null;
 }
 
 export function stopQRScanner() {
-  if (html5QrScanner) {
-    html5QrScanner.stop().catch(() => {});
-    html5QrScanner = null;
+  if (qrAnimFrame) {
+    cancelAnimationFrame(qrAnimFrame);
+    qrAnimFrame = null;
   }
   if (qrStream) {
     qrStream.getTracks().forEach(t => t.stop());
     qrStream = null;
   }
   const container = document.getElementById("qr-scanner-container");
+  if (container) {
+    container.style.display = "none";
+    hideFileBtn(container);
+  }
   const video = document.getElementById("qr-video");
-  if (container) container.style.display = "none";
-  if (video) video.srcObject = null;
+  if (video) {
+    video.pause();
+    video.srcObject = null;
+    video.removeAttribute('src');
+    video.load(); // Release iOS AVPlayer resources
+  }
 }
 
 /* ── QR generation ── */

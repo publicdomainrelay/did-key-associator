@@ -33,7 +33,7 @@ export class DkaKeyList extends HTMLElement {
           </div>
         </form>
         <div id="qr-scanner-container" style="display:none;margin-top:12px;">
-          <video id="qr-video" autoplay playsinline style="width:100%;border-radius:8px;"></video>
+          <video id="qr-video" autoplay muted playsinline webkit-playsinline style="width:100%;height:auto;min-height:240px;border-radius:8px;background:#000;"></video>
           <button type="button" class="btn btn-outline btn-block mt-3" id="qr-stop-btn">Stop Scanner</button>
           <p id="qr-scan-status" style="margin-top:8px;font-size:13px;"></p>
         </div>
