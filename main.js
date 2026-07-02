@@ -8,7 +8,7 @@ function buildClientID() {
 	const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 	if (isLocal) {
 		return `http://localhost?${new URLSearchParams({
-			scope: `atproto repo:${BADGE_BLUE_KEYS_NSID}?action=create`,
+			scope: `atproto repo:${BADGE_BLUE_KEYS_NSID}?action=create,update,delete`,
 			redirect_uri: Object.assign(new URL(window.location.origin), { hostname: '127.0.0.1' }).href,
 		})}`
 	}
