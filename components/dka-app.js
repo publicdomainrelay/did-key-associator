@@ -14,12 +14,12 @@ export class DkaApp extends HTMLElement {
 
   renderLoading() {
     this.innerHTML = `
-      <div class="app-shell">
+      <main class="app-shell">
         <div class="card text-center" style="padding:40px;">
-          <h3 aria-busy="true">Loading session…</h3>
+          <h2 aria-busy="true">Loading session…</h2>
           <p id="load-error" class="text-danger hidden mt-3"></p>
         </div>
-      </div>
+      </main>
     `;
   }
 
@@ -43,12 +43,12 @@ export class DkaApp extends HTMLElement {
 
   renderLogin() {
     this.innerHTML = `
-      <div class="app-shell">
+      <main class="app-shell">
         <header style="margin-bottom:24px;">
-          <h1>DID Key Associator</h1>
+          <h1 style="font-size:18px;white-space:nowrap;">DID Key Associator</h1>
         </header>
         <div class="card">
-          <h3>Login with the Atmosphere</h3>
+          <h2>Login with the Atmosphere</h2>
           <form id="login-form" style="margin-top:12px;">
             <p class="text-muted" style="font-size:14px;margin-bottom:12px;">Enter your handle to continue</p>
             <input type="text" name="username" id="login-handle"
@@ -64,7 +64,7 @@ export class DkaApp extends HTMLElement {
         <nav style="margin-top:20px;text-align:center;font-size:13px;">
           <a href="https://github.com/publicdomainrelay/did-key-associator" target="_blank" class="text-muted">Source Code</a>
         </nav>
-      </div>
+      </main>
     `;
 
     this.querySelector('#login-form').addEventListener('submit', async (e) => {
@@ -91,13 +91,13 @@ export class DkaApp extends HTMLElement {
     const hashDid = getHashDid();
 
     this.innerHTML = `
-      <div class="app-shell">
-        <header style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-          <h1>DID Key Associator</h1>
-          <nav style="display:flex;gap:16px;align-items:center;">
-            <span class="text-muted" style="font-size:13px;">@${this._sessionHandle}</span>
-            <button class="btn btn-outline btn-sm" id="logout-btn">Logout</button>
-          </nav>
+      <main class="app-shell">
+        <header style="margin-bottom:20px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <h1 style="font-size:18px;white-space:nowrap;">DID Key Associator</h1>
+            <button class="btn btn-outline btn-sm" id="logout-btn" style="padding:4px 10px;font-size:11px;">Logout</button>
+          </div>
+          <div class="text-muted" style="font-size:12px;margin-top:4px;">@${this._sessionHandle}</div>
         </header>
 
         <dka-attest-confirm id="attest-confirm"
@@ -107,7 +107,7 @@ export class DkaApp extends HTMLElement {
 
         <dka-key-list id="key-list"></dka-key-list>
         <dka-share-sheet id="share-sheet"></dka-share-sheet>
-      </div>
+      </main>
     `;
 
     const keyList = this.querySelector('#key-list');

@@ -5,7 +5,7 @@
   --inset-bg: #0F221E;
   --text: #EAF3F0;
   --text-muted: #8FA8A1;
-  --text-faint: #6E8B84;
+  --text-faint: #7D9E95;
   --accent: #7FE3C6;
   --accent-bg: #21493F;
   --accent-text: #0B1F1A;
@@ -24,12 +24,12 @@
 /* ── Reset & base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+html { overflow-y: auto; background: var(--bg); }
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   line-height: 1.55;
-  min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
 code, .mono {
@@ -38,9 +38,9 @@ code, .mono {
 }
 
 /* ── Typography ── */
-h1 { font-size: 20px; font-weight: 700; color: var(--text); }
-h2 { font-size: 17px; font-weight: 700; color: var(--text); }
-h3 { font-size: 15px; font-weight: 600; color: var(--text); }
+h1 { font-size: 24px; font-weight: 700; color: var(--text); }
+h2 { font-size: 20px; font-weight: 700; color: var(--text); }
+h3 { font-size: 17px; font-weight: 700; color: var(--text); }
 
 /* ── Buttons ── */
 .btn {
@@ -105,7 +105,8 @@ input::placeholder { color: var(--text-faint); }
   display: flex; gap: 14px; margin-top: 10px;
   font-size: 12px; font-weight: 600;
 }
-.actions span { cursor: pointer; user-select: none; }
+.actions span { cursor: pointer; user-select: none; min-height: 44px; display: inline-flex; align-items: center; padding: 6px 10px; }
+.actions a { min-height: 44px; display: inline-flex; align-items: center; padding: 6px 10px; }
 .actions .act-accent { color: var(--accent); }
 .actions .act-danger { color: var(--danger); }
 
@@ -188,7 +189,6 @@ input::placeholder { color: var(--text-faint); }
 /* ── Layout ── */
 .app-shell {
   max-width: 680px; margin: 0 auto; padding: 20px;
-  min-height: 100vh;
 }
 
 /* ── Success banner ── */

@@ -19,16 +19,13 @@ export class DkaKeyList extends HTMLElement {
   renderShell() {
     this.innerHTML = `
       <div class="card">
-        <h3 style="margin-bottom:12px;">Associate a <code>did:key</code></h3>
+        <h2 style="margin-bottom:12px;">Associate a <code>did:key</code></h2>
         <form id="assoc-form">
           <input type="text" name="did-key" id="did-key-input"
             placeholder="did:key:z6Mk..." required
             style="margin-bottom:8px;">
           <input type="text" name="name" id="name-input"
             placeholder="name (auto-generated if empty)"
-            style="margin-bottom:8px;">
-          <input type="text" name="service" id="service-input"
-            placeholder="service (default: *)"
             style="margin-bottom:12px;">
           <div style="display:flex;gap:8px;">
             <button type="button" class="btn btn-secondary" id="scan-qr-btn">Scan QR</button>
@@ -53,7 +50,7 @@ export class DkaKeyList extends HTMLElement {
       </div>
 
       <div class="header-row" style="margin-top:16px;">
-        <h1>Your Keys</h1>
+        <h2>Your Keys</h2>
       </div>
       <div class="subheader" id="keys-sub">@${this._sessionHandle || ''} · 0 keys</div>
       <div class="search-bar">
@@ -79,8 +76,7 @@ export class DkaKeyList extends HTMLElement {
       try {
         const didKey = this.querySelector('#did-key-input').value.trim();
         const name = this.querySelector('#name-input').value.trim() || randomName();
-        const service = this.querySelector('#service-input').value.trim() || '*';
-        const res = await doAssociate(this._agent, { didKey, name, service });
+        const res = await doAssociate(this._agent, { didKey, name });
         this._successUri = res.data.uri;
         this.querySelector('#assoc-form').reset();
         await this.refreshKeys();

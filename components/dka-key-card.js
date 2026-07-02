@@ -41,7 +41,7 @@ export class DkaKeyCard extends HTMLElement {
                <button class="btn btn-primary btn-sm" id="save-btn">Save</button>
                <button class="btn btn-outline btn-sm" id="cancel-btn">Cancel</button>`
             : `<strong id="name-display">${this._escape(d.name)}</strong>
-               <vault-chip service="${this._escape(d.service)}"></vault-chip>`
+               <vault-chip service="${this._escape(d.service)}" style="margin-left:auto;"></vault-chip>`
           }
         </div>
         ${dateStr ? `<small class="text-faint">${dateStr}</small>` : ''}
@@ -52,8 +52,7 @@ export class DkaKeyCard extends HTMLElement {
         <div class="actions">
           <span class="act-accent" id="rename-btn">${this._editing ? '' : 'Rename'}</span>
           <span class="act-accent" id="qr-btn">Share QR</span>
-          <span style="color:var(--text-faint);margin:0 4px;">${' '}</span>
-          <span class="act-accent"><a href="https://pdsls.dev/${this._escape(d.uri)}" target="_blank" style="color:inherit;text-decoration:none;font-size:12px;">pdsls</a></span>
+          <span class="act-accent" style="margin-left:8px;"><a href="https://pdsls.dev/${this._escape(d.uri)}" target="_blank" style="color:inherit;text-decoration:none;font-size:12px;">pdsls</a></span>
           <span class="act-danger" id="delete-btn">Delete</span>
         </div>
         <div id="qr-inline" style="${this._showingQR ? '' : 'display:none;'}margin-top:12px;"></div>
