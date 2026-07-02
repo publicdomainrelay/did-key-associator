@@ -36,13 +36,39 @@
 			margin-top: 0.5rem;
 			font-size: 0.9em;
 		}
+		.qr-code-img {
+			display: block;
+			margin: 0.5rem 0;
+			max-width: 180px;
+			border: 2px solid var(--pico-muted-border-color);
+			border-radius: 4px;
+		}
+		.inline-edit {
+			display: flex;
+			gap: 0.5rem;
+			align-items: center;
+		}
+		.inline-edit input {
+			flex: 1;
+		}
+		.key-actions {
+			display: flex;
+			gap: 0.3rem;
+			margin-top: 0.4rem;
+			flex-wrap: wrap;
+		}
+		.key-actions button {
+			font-size: 0.75em;
+			padding: 0.2rem 0.5rem;
+		}
 	</style>
 	<title>DID Key Associator</title>
 	<script type="importmap">
 	{
 		"imports": {
 			"@atproto/oauth-client-browser": "https://esm.sh/@atproto/oauth-client-browser@0.3.29",
-			"@atproto/api": "https://esm.sh/@atproto/api@0.16.4"
+			"@atproto/api": "https://esm.sh/@atproto/api@0.16.4",
+			"qrcode": "https://esm.sh/qrcode@1.5.4"
 		}
 	}
 	</script>
@@ -64,7 +90,8 @@
 
 			<article id="instructions">
 				<h3>Associate a did:key with your ATproto account</h3>
-				<p>Paste a <code>did:key:...</code> string or scan a QR code containing one. A <code>com.publicdomainrelay.temp.badgeBlueKeys</code> record is created on your PDS linking the key to your account, so services can verify the association.</p>
+				<p>Paste a <code>did:key:...</code> string or scan a QR code containing one. A <code>com.publicdomainrelay.temp.badgeBlueKeys</code> record is created on your PDS linking the key to your account.</p>
+				<p>Share an association link by generating a QR code for any listed key. Others scan it, land here, confirm, and associate the same key with their own account.</p>
 				<p>The <strong>service</strong> field scopes the key to a specific service:</p>
 				<ul>
 					<li><code>*</code> — key valid for all services (default).</li>
@@ -99,9 +126,18 @@
 			<!-- hidden by default, shown after login -->
 			<article id="associate-container" style="display: none;">
 				<p>Welcome, <code id="welcome-message"></code></p>
+
+				<!-- hash-confirm banner: shown when URL hash has a did -->
+				<article id="hash-confirm-banner" style="display: none; border-color: var(--pico-primary); background: var(--pico-primary-background);">
+					<h3>Confirm Association</h3>
+					<p>Scanned or linked key: <code id="hash-did-display" style="word-break: break-all;"></code></p>
+					<button id="hash-confirm-button">Yes, associate this key</button>
+				</article>
+
 				<h3>Associate a did:key</h3>
 				<form id="associate-form">
 					<input name="did-key" placeholder="did:key:z6Mk..." id="did-key" required autofocus style="font-family: monospace;">
+					<input name="name" placeholder="name (auto-generated if empty)" id="name" style="font-family: monospace;">
 					<input name="service" placeholder="service (default: *)" id="service" style="font-family: monospace;">
 					<fieldset role="group">
 						<button id="scan-qr-button" type="button" class="secondary">Scan QR Code</button>
