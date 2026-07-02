@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="referrer" content="origin-when-cross-origin">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.purple.min.css">
+	<style>
+		code {
+			/* fsr pico sets this to inline-block? */
+			display: inline;
+			word-break: break-all;
+		}
+		article {
+			max-width: 100%;
+		}
+		.key-list-item {
+			margin-bottom: 1rem;
+			padding-bottom: 1rem;
+			border-bottom: 1px solid var(--pico-muted-border-color);
+		}
+		.key-list-item:last-child {
+			border-bottom: none;
+			margin-bottom: 0;
+			padding-bottom: 0;
+		}
+	</style>
+	<title>FedProxy</title>
+	<script type="importmap">
+	{
+		"imports": {
+			"@atproto/oauth-client-browser": "https://esm.sh/@atproto/oauth-client-browser@0.3.29",
+			"@atproto/api": "https://esm.sh/@atproto/api@0.16.4"
+		}
+	}
+	</script>
+</head>
+<body>
+	<main class="container">
+		<section class="content">
+			<header>
+				<hgroup>
+					<h1>FedProxy</h1>
+				</hgroup>
+				<nav>
+					<ul>
+						<li id="logout-nav" style="display: none;"><a href="#">Logout</a></li>
+						<li><a target="_blank" href="https://github.com/publicdomainrelay/atproto-reverse-proxy">Source Code</a></li>
+					</ul>
+				</nav>
+			</header>
+
+			<article id="ssh-public-key-instructions">
+				<h3>Instructions</h3>
+				<p>Add an SSH key for each service you want to expose. Each service is reachable at:</p>
+				<p><code>&lt;service&gt;--&lt;your-handle&gt;.fedproxy.com</code> — the service name and your handle are folded into one label, with every dot in your handle turned into a dash.</p>
+				<p>Example: service <code>my-cool-service</code> for handle <code>handle.example.com</code> is served at <code>my-cool-service--handle-example-com.fedproxy.com</code>. Every service rides one shared <code>*.fedproxy.com</code> wildcard certificate, so HTTPS works the moment you connect — no per-service certificate is issued.</p>
+				<p>The <strong>service</strong> field accepts:</p>
+				<ul>
+					<li><code>my-cool-service</code> — a single service host.</li>
+					<li><code>*</code> — this key is valid for <em>all</em> of your services (an authorization wildcard, not a hostname).</li>
+					<li><code>*.my-cool-service</code> — a wildcard subdomain: serves any <code>anything.my-cool-service--&lt;handle&gt;.fedproxy.com</code>. This one gets its own certificate issued on demand.</li>
+				</ul>
+				<p>Then start the ssh client (example forwarding <code>my-cool-service--handle-example-com.fedproxy.com</code> to local port <code>8080</code>):</p>
+        <pre id="example-ssh-command">
+
+ssh -NnT -p 2222 \
+  -o UserKnownHostsFile=/dev/null \
+  -o StrictHostKeyChecking=no \
+  -o PasswordAuthentication=no \
+  -R my-cool-service:80:127.0.0.1:8080 \
+  handle.example.com@fedproxy.com
+        </pre>
+			</article>
+
+			<article id="loading-spinner">
+				<h3 aria-busy="true">Loading session...</h3>
+				<article id="loading-error" style="display: none; background-color: #861D13;">
+				</article>
+			</article>
+
+			<!-- hidden by default, will be shown if an existing session cannot be resumed -->
+			<article id="login-container" style="display: none;">
+				<h3>Login with the Atmosphere</h3>
+				<form id="login-form">
+					<p>Enter your handle to continue</p>
+					<fieldset role="group">
+						<input name="username" id="username" placeholder="alice.example.com" style="font-family: monospace;" required>
+						<button id="login-button">Login</button>
+					</fieldset>
+				</form>
+				<p>If you're a Bluesky user, you already have an Atmosphere account.</p>
+				<button id="bsky-button" class="secondary" style="width: 100%">Create Account with Bluesky Social</button>
+				<p></p>
+				<a href="https://atproto.com/guides/self-hosting"><button class="secondary outline" style="width: 100%">Other options</button></a>
+				<p id="login-form-error" style="color: #E37474;"></p>
+			</article>
+
+			<!-- hidden by default, will be shown if a login session has been established -->
+			<article id="ssh-public-key-container" style="display: none;">
+				<p>Welcome, <code id="welcome-message"></code></p>
+				<h3>Add SSH Public Key</h3>
+				<form id="ssh-public-key-form">
+					<input name="ssh-public-key-name" placeholder="a-name-for-your-key" id="ssh-public-key-name" required autofocus></input>
+					<input name="ssh-public-key-service" placeholder="service-name, * (all), or *.service-name (wildcard)" id="ssh-public-key-service" required autofocus></input>
+					<textarea name="ssh-public-key-key" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG9BVPpCtKTckpQVk4etPSsC65Vo91Ie0kpjJH6PSdow alice@wonderland" id="ssh-public-key-key" required autofocus></textarea>
+					<button id="ssh-public-key-button">Create</button>
+				</form>
+				<br>
+				<p id="ssh-public-key-form-error" style="color: #E37474;"></p>
+			</article>
+
+			<!-- hidden by default, will be shown if a ssh-public-key has been created -->
+			<article id="success-container" style="display: none; border-color: #4CAF50;">
+				<h2>Success!</h2>
+				<p>The ssh-public-key record has been created on your PDS. It should be visible at: </p><a id="success-pdsls" target="_blank" href="#">PDSls link</a>
+			</article>
+
+			<!-- hidden by default, will be shown if a login session has been established -->
+			<article id="ssh-public-keys-list-container" style="display: none;">
+				<div id="ssh-public-keys-list" aria-busy="true">Loading keys...</div>
+			</article>
+
+		</section>
+	</main>
+
+	<script type="module" src="./main.js"></script>
+</body>
+</html>
