@@ -1,173 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="utf-8">
-	<meta name="referrer" content="origin-when-cross-origin">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.purple.min.css">
-	<style>
-		code {
-			display: inline;
-			word-break: break-all;
-		}
-		article {
-			max-width: 100%;
-		}
-		.key-list-item {
-			margin-bottom: 1rem;
-			padding-bottom: 1rem;
-			border-bottom: 1px solid var(--pico-muted-border-color);
-		}
-		.key-list-item:last-child {
-			border-bottom: none;
-			margin-bottom: 0;
-			padding-bottom: 0;
-		}
-		#qr-scanner-container {
-			display: none;
-			margin: 1rem 0;
-			max-width: 400px;
-		}
-		#qr-video {
-			width: 100%;
-			border-radius: 8px;
-		}
-		#qr-scan-status {
-			margin-top: 0.5rem;
-			font-size: 0.9em;
-		}
-		.qr-code-img {
-			display: block;
-			margin: 0.5rem 0;
-			max-width: 180px;
-			border: 2px solid var(--pico-muted-border-color);
-			border-radius: 4px;
-		}
-		.inline-edit {
-			display: flex;
-			gap: 0.5rem;
-			align-items: center;
-		}
-		.inline-edit input {
-			flex: 1;
-		}
-		.key-actions {
-			display: flex;
-			gap: 0.3rem;
-			margin-top: 0.4rem;
-			flex-wrap: wrap;
-		}
-		.key-actions button {
-			font-size: 0.75em;
-			padding: 0.2rem 0.5rem;
-		}
-	</style>
-	<title>DID Key Associator</title>
-	<script type="importmap">
-	{
-		"imports": {
-			"@atproto/oauth-client-browser": "https://esm.sh/@atproto/oauth-client-browser@0.3.29",
-			"@atproto/api": "https://esm.sh/@atproto/api@0.16.4",
-			"qrcode": "https://esm.sh/qrcode@1.5.4",
-			"html5-qrcode": "https://esm.sh/html5-qrcode@2.3.8"
-		}
-	}
-	</script>
+  <meta charset="utf-8">
+  <meta name="referrer" content="origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+  <title>DID Key Associator</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "@atproto/oauth-client-browser": "https://esm.sh/@atproto/oauth-client-browser@0.3.29",
+      "@atproto/api": "https://esm.sh/@atproto/api@0.16.4",
+      "qrcode": "https://esm.sh/qrcode@1.5.4",
+      "html5-qrcode": "https://esm.sh/html5-qrcode@2.3.8"
+    }
+  }
+  </script>
 </head>
 <body>
-	<main class="container">
-		<section class="content">
-			<header>
-				<hgroup>
-					<h1>DID Key Associator</h1>
-				</hgroup>
-				<nav>
-					<ul>
-						<li id="logout-nav" style="display: none;"><a href="#">Logout</a></li>
-						<li><a target="_blank" href="https://github.com/publicdomainrelay/did-key-associator">Source Code</a></li>
-					</ul>
-				</nav>
-			</header>
-
-			<article id="instructions">
-				<h3>Associate a did:key with your ATproto account</h3>
-				<p>Paste a <code>did:key:...</code> string or scan a QR code containing one. A <code>com.publicdomainrelay.temp.badgeBlueKeys</code> record is created on your PDS linking the key to your account.</p>
-				<p>Share an association link by generating a QR code for any listed key. Others scan it, land here, confirm, and associate the same key with their own account.</p>
-				<p>The <strong>service</strong> field scopes the key to a specific service:</p>
-				<ul>
-					<li><code>*</code> — key valid for all services (default).</li>
-					<li><code>my-service</code> — key valid only for that service.</li>
-				</ul>
-				<p>After creation, the record is visible at <a target="_blank" href="https://pdsls.dev">pdsls.dev</a>.</p>
-			</article>
-
-			<article id="loading-spinner">
-				<h3 aria-busy="true">Loading session...</h3>
-				<article id="loading-error" style="display: none; background-color: #861D13;">
-				</article>
-			</article>
-
-			<!-- hidden by default, shown when no existing session -->
-			<article id="login-container" style="display: none;">
-				<h3>Login with the Atmosphere</h3>
-				<form id="login-form">
-					<p>Enter your handle to continue</p>
-					<fieldset role="group">
-						<input name="username" id="username" placeholder="alice.example.com" style="font-family: monospace;" required>
-						<button id="login-button">Login</button>
-					</fieldset>
-				</form>
-				<p>If you're a Bluesky user, you already have an Atmosphere account.</p>
-				<button id="bsky-button" class="secondary" style="width: 100%">Create Account with Bluesky Social</button>
-				<p></p>
-				<a href="https://atproto.com/guides/self-hosting"><button class="secondary outline" style="width: 100%">Other options</button></a>
-				<p id="login-form-error" style="color: #E37474;"></p>
-			</article>
-
-			<!-- hidden by default, shown after login -->
-			<article id="associate-container" style="display: none;">
-				<p>Welcome, <code id="welcome-message"></code></p>
-
-				<!-- hash-confirm banner: shown when URL hash has a did -->
-				<article id="hash-confirm-banner" style="display: none; border-color: var(--pico-primary); background: var(--pico-primary-background);">
-					<h3>Confirm Association</h3>
-					<p>Scanned or linked key: <code id="hash-did-display" style="word-break: break-all;"></code></p>
-					<button id="hash-confirm-button">Yes, associate this key</button>
-				</article>
-
-				<h3>Associate a did:key</h3>
-				<form id="associate-form">
-					<input name="did-key" placeholder="did:key:z6Mk..." id="did-key" required autofocus style="font-family: monospace;">
-					<input name="name" placeholder="name (auto-generated if empty)" id="name" style="font-family: monospace;">
-					<input name="service" placeholder="service (default: *)" id="service" style="font-family: monospace;">
-					<fieldset role="group">
-						<button id="scan-qr-button" type="button" class="secondary">Scan QR Code</button>
-						<button id="associate-button">Associate Key</button>
-					</fieldset>
-				</form>
-				<div id="qr-scanner-container">
-					<video id="qr-video" autoplay playsinline></video>
-					<button id="qr-stop-button" type="button" class="secondary outline" style="width: 100%">Stop Scanner</button>
-					<p id="qr-scan-status"></p>
-				</div>
-				<p id="associate-form-error" style="color: #E37474;"></p>
-			</article>
-
-			<!-- hidden by default, shown after successful record creation -->
-			<article id="success-container" style="display: none; border-color: #4CAF50;">
-				<h2>Associated!</h2>
-				<p>The badgeBlueKeys record has been created on your PDS. View it at: </p><a id="success-pdsls" target="_blank" href="#">PDSls link</a>
-			</article>
-
-			<!-- hidden by default, shown after login -->
-			<article id="keys-list-container" style="display: none;">
-				<h3>Your Associated Keys</h3>
-				<div id="keys-list" aria-busy="true">Loading keys...</div>
-			</article>
-
-		</section>
-	</main>
-
-	<script type="module" src="./main.js"></script>
+  <dka-app></dka-app>
+  <script type="module" src="./components/dka-app.js"></script>
 </body>
 </html>
