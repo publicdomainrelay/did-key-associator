@@ -7,7 +7,6 @@
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.purple.min.css">
 	<style>
 		code {
-			/* fsr pico sets this to inline-block? */
 			display: inline;
 			word-break: break-all;
 		}
@@ -24,8 +23,21 @@
 			margin-bottom: 0;
 			padding-bottom: 0;
 		}
+		#qr-scanner-container {
+			display: none;
+			margin: 1rem 0;
+			max-width: 400px;
+		}
+		#qr-video {
+			width: 100%;
+			border-radius: 8px;
+		}
+		#qr-scan-status {
+			margin-top: 0.5rem;
+			font-size: 0.9em;
+		}
 	</style>
-	<title>FedProxy</title>
+	<title>DID Key Associator</title>
 	<script type="importmap">
 	{
 		"imports": {
@@ -40,37 +52,25 @@
 		<section class="content">
 			<header>
 				<hgroup>
-					<h1>FedProxy</h1>
+					<h1>DID Key Associator</h1>
 				</hgroup>
 				<nav>
 					<ul>
 						<li id="logout-nav" style="display: none;"><a href="#">Logout</a></li>
-						<li><a target="_blank" href="https://github.com/publicdomainrelay/atproto-reverse-proxy">Source Code</a></li>
+						<li><a target="_blank" href="https://github.com/publicdomainrelay/did-key-associator">Source Code</a></li>
 					</ul>
 				</nav>
 			</header>
 
-			<article id="ssh-public-key-instructions">
-				<h3>Instructions</h3>
-				<p>Add an SSH key for each service you want to expose. Each service is reachable at:</p>
-				<p><code>&lt;service&gt;--&lt;your-handle&gt;.fedproxy.com</code> — the service name and your handle are folded into one label, with every dot in your handle turned into a dash.</p>
-				<p>Example: service <code>my-cool-service</code> for handle <code>handle.example.com</code> is served at <code>my-cool-service--handle-example-com.fedproxy.com</code>. Every service rides one shared <code>*.fedproxy.com</code> wildcard certificate, so HTTPS works the moment you connect — no per-service certificate is issued.</p>
-				<p>The <strong>service</strong> field accepts:</p>
+			<article id="instructions">
+				<h3>Associate a did:key with your ATproto account</h3>
+				<p>Paste a <code>did:key:...</code> string or scan a QR code containing one. A <code>com.publicdomainrelay.temp.badgeBlueKeys</code> record is created on your PDS linking the key to your account, so services can verify the association.</p>
+				<p>The <strong>service</strong> field scopes the key to a specific service:</p>
 				<ul>
-					<li><code>my-cool-service</code> — a single service host.</li>
-					<li><code>*</code> — this key is valid for <em>all</em> of your services (an authorization wildcard, not a hostname).</li>
-					<li><code>*.my-cool-service</code> — a wildcard subdomain: serves any <code>anything.my-cool-service--&lt;handle&gt;.fedproxy.com</code>. This one gets its own certificate issued on demand.</li>
+					<li><code>*</code> — key valid for all services (default).</li>
+					<li><code>my-service</code> — key valid only for that service.</li>
 				</ul>
-				<p>Then start the ssh client (example forwarding <code>my-cool-service--handle-example-com.fedproxy.com</code> to local port <code>8080</code>):</p>
-        <pre id="example-ssh-command">
-
-ssh -NnT -p 2222 \
-  -o UserKnownHostsFile=/dev/null \
-  -o StrictHostKeyChecking=no \
-  -o PasswordAuthentication=no \
-  -R my-cool-service:80:127.0.0.1:8080 \
-  handle.example.com@fedproxy.com
-        </pre>
+				<p>After creation, the record is visible at <a target="_blank" href="https://pdsls.dev">pdsls.dev</a>.</p>
 			</article>
 
 			<article id="loading-spinner">
@@ -79,7 +79,7 @@ ssh -NnT -p 2222 \
 				</article>
 			</article>
 
-			<!-- hidden by default, will be shown if an existing session cannot be resumed -->
+			<!-- hidden by default, shown when no existing session -->
 			<article id="login-container" style="display: none;">
 				<h3>Login with the Atmosphere</h3>
 				<form id="login-form">
@@ -96,29 +96,36 @@ ssh -NnT -p 2222 \
 				<p id="login-form-error" style="color: #E37474;"></p>
 			</article>
 
-			<!-- hidden by default, will be shown if a login session has been established -->
-			<article id="ssh-public-key-container" style="display: none;">
+			<!-- hidden by default, shown after login -->
+			<article id="associate-container" style="display: none;">
 				<p>Welcome, <code id="welcome-message"></code></p>
-				<h3>Add SSH Public Key</h3>
-				<form id="ssh-public-key-form">
-					<input name="ssh-public-key-name" placeholder="a-name-for-your-key" id="ssh-public-key-name" required autofocus></input>
-					<input name="ssh-public-key-service" placeholder="service-name, * (all), or *.service-name (wildcard)" id="ssh-public-key-service" required autofocus></input>
-					<textarea name="ssh-public-key-key" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG9BVPpCtKTckpQVk4etPSsC65Vo91Ie0kpjJH6PSdow alice@wonderland" id="ssh-public-key-key" required autofocus></textarea>
-					<button id="ssh-public-key-button">Create</button>
+				<h3>Associate a did:key</h3>
+				<form id="associate-form">
+					<input name="did-key" placeholder="did:key:z6Mk..." id="did-key" required autofocus style="font-family: monospace;">
+					<input name="service" placeholder="service (default: *)" id="service" style="font-family: monospace;">
+					<fieldset role="group">
+						<button id="scan-qr-button" type="button" class="secondary">Scan QR Code</button>
+						<button id="associate-button">Associate Key</button>
+					</fieldset>
 				</form>
-				<br>
-				<p id="ssh-public-key-form-error" style="color: #E37474;"></p>
+				<div id="qr-scanner-container">
+					<video id="qr-video" autoplay playsinline></video>
+					<button id="qr-stop-button" type="button" class="secondary outline" style="width: 100%">Stop Scanner</button>
+					<p id="qr-scan-status"></p>
+				</div>
+				<p id="associate-form-error" style="color: #E37474;"></p>
 			</article>
 
-			<!-- hidden by default, will be shown if a ssh-public-key has been created -->
+			<!-- hidden by default, shown after successful record creation -->
 			<article id="success-container" style="display: none; border-color: #4CAF50;">
-				<h2>Success!</h2>
-				<p>The ssh-public-key record has been created on your PDS. It should be visible at: </p><a id="success-pdsls" target="_blank" href="#">PDSls link</a>
+				<h2>Associated!</h2>
+				<p>The badgeBlueKeys record has been created on your PDS. View it at: </p><a id="success-pdsls" target="_blank" href="#">PDSls link</a>
 			</article>
 
-			<!-- hidden by default, will be shown if a login session has been established -->
-			<article id="ssh-public-keys-list-container" style="display: none;">
-				<div id="ssh-public-keys-list" aria-busy="true">Loading keys...</div>
+			<!-- hidden by default, shown after login -->
+			<article id="keys-list-container" style="display: none;">
+				<h3>Your Associated Keys</h3>
+				<div id="keys-list" aria-busy="true">Loading keys...</div>
 			</article>
 
 		</section>

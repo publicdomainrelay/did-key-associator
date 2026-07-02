@@ -1,9 +1,9 @@
 {
-  "client_id": "https://fedproxy.com/oauth-client-metadata.json",
+  "client_id": "https://did-key-associator.publicdomainrelay.com/oauth-client-metadata.json",
   "dpop_bound_access_tokens": true,
   "application_type": "web",
   "redirect_uris": [
-    "https://fedproxy.com"
+    "https://did-key-associator.publicdomainrelay.com"
   ],
   "grant_types": [
     "authorization_code",
@@ -12,8 +12,8 @@
   "response_types": [
     "code"
   ],
-  "scope": "atproto repo:com.fedproxy.sshPublicKey?action=create",
+  "scope": "atproto repo:com.publicdomainrelay.temp.badgeBlueKeys?action=create",
   "token_endpoint_auth_method": "none",
-  "client_name": "FedProxy",
-  "client_uri": "https://fedproxy.com"
+  "client_name": "DID Key Associator",
+  "client_uri": "https://did-key-associator.publicdomainrelay.com"
 }

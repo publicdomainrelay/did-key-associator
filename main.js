@@ -1,12 +1,13 @@
 import { BrowserOAuthClient } from '@atproto/oauth-client-browser'
 import { Agent } from '@atproto/api'
 
+const BADGE_BLUE_KEYS_NSID = 'com.publicdomainrelay.temp.badgeBlueKeys';
+
 function buildClientID() {
 	const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 	if (isLocal) {
-		// see https://atproto.com/specs/oauth#localhost-client-development
 		return `http://localhost?${new URLSearchParams({
-			scope: "atproto repo:com.fedproxy.sshPublicKey?action=create",
+			scope: `atproto repo:${BADGE_BLUE_KEYS_NSID}?action=create`,
 			redirect_uri: Object.assign(new URL(window.location.origin), { hostname: '127.0.0.1' }).href,
 		})}`
 	}
@@ -14,62 +15,99 @@ function buildClientID() {
 }
 const clientId = buildClientID();
 
-let oac; // undefined | BrowserOAuthClient
-let agent; // undefined | Agent   (gets assigned after successful auth)
-let sessionHandle; // undefined | string  (logged-in handle, for building hostnames)
+let oac;
+let agent;
+let sessionHandle;
+let qrStream = null; // active MediaStream for QR scanner
 
-// serviceHostname returns the public host a service is reachable at.
-//
-// The service name and your handle are folded into a SINGLE DNS label: dots
-// become dashes and the two are joined by "--". That keeps every service exactly
-// one level under fedproxy.com, so it is covered by the one shared
-// "*.fedproxy.com" wildcard certificate — HTTPS works the instant you connect
-// and NO per-service certificate is ever issued (which is what kept hitting the
-// Let's Encrypt rate limit).
-//
-//   service "app"        handle "alice.bsky.social"
-//     -> app--alice-bsky-social.fedproxy.com
-//   service "*.app"      handle "alice.bsky.social"   (explicit wildcard)
-//     -> *.app--alice-bsky-social.fedproxy.com   (matches any sub-host)
-//
-// A bare "*" service means "this key is valid for ALL of your services" — it is
-// an authorization wildcard, not a hostname.
-function serviceHostname(service, handle) {
-	const flat = (s) => s.replace(/\./g, "-");
-	if (service.startsWith("*.")) {
-		return `*.${flat(service.slice(2))}--${flat(handle)}.fedproxy.com`;
-	}
-	return `${flat(service)}--${flat(handle)}.fedproxy.com`;
+// --- QR code scanning (BarcodeDetector API, Chrome/Edge/Safari 17+) ---
+
+function isBarcodeDetectorSupported() {
+	return 'BarcodeDetector' in window;
 }
 
-// Helper function to fetch and render SSH Keys securely
-async function fetchAndRenderKeys(handle) {
-	const listContainer = document.getElementById("ssh-public-keys-list");
-	listContainer.setAttribute("aria-busy", "true");
-	listContainer.innerHTML = ""; // Clear existing
+async function startQRScanner() {
+	const container = document.getElementById("qr-scanner-container");
+	const video = document.getElementById("qr-video");
+	const status = document.getElementById("qr-scan-status");
 
-	let sshPublicKeysByService = {};
+	if (!isBarcodeDetectorSupported()) {
+		status.textContent = "BarcodeDetector not available in this browser. Try Chrome, Edge, or Safari 17+.";
+		status.style.color = "#E37474";
+		container.style.display = "block";
+		return;
+	}
+
+	try {
+		qrStream = await navigator.mediaDevices.getUserMedia({
+			video: { facingMode: "environment" }
+		});
+		video.srcObject = qrStream;
+		container.style.display = "block";
+		status.textContent = "Scanning... point camera at a QR code containing a did:key string.";
+		status.style.color = "inherit";
+
+		const detector = new BarcodeDetector({ formats: ['qr_code'] });
+
+		const scan = async () => {
+			if (!qrStream) return;
+			try {
+				const barcodes = await detector.detect(video);
+				if (barcodes.length > 0) {
+					const value = barcodes[0].rawValue;
+					if (value.startsWith('did:key:')) {
+						document.getElementById("did-key").value = value;
+						status.textContent = `Captured: ${value.slice(0, 40)}...`;
+						status.style.color = "#4CAF50";
+						stopQRScanner();
+					} else {
+						status.textContent = `Scanned "${value.slice(0, 60)}" — not a did:key. Keep scanning.`;
+						status.style.color = "#E37474";
+					}
+				}
+			} catch (e) {
+				// BarcodeDetector may throw on some frames; ignore
+			}
+			if (qrStream) requestAnimationFrame(scan);
+		};
+		requestAnimationFrame(scan);
+	} catch (err) {
+		status.textContent = `Camera error: ${err.message}`;
+		status.style.color = "#E37474";
+		container.style.display = "block";
+	}
+}
+
+function stopQRScanner() {
+	if (qrStream) {
+		qrStream.getTracks().forEach(t => t.stop());
+		qrStream = null;
+	}
+	document.getElementById("qr-scanner-container").style.display = "none";
+	document.getElementById("qr-video").srcObject = null;
+}
+
+// --- Fetch and render badgeBlueKeys records ---
+
+async function fetchAndRenderKeys() {
+	const listContainer = document.getElementById("keys-list");
+	listContainer.setAttribute("aria-busy", "true");
+	listContainer.innerHTML = "";
+
+	let records = [];
 	let cursor = undefined;
 
 	try {
 		while (cursor === undefined || cursor != null) {
 			const res = await agent.com.atproto.repo.listRecords({
 				repo: agent.did,
-				collection: 'com.fedproxy.sshPublicKey',
+				collection: BADGE_BLUE_KEYS_NSID,
 				cursor: cursor,
 			});
 
-			if (!res.success) {
-				throw new Error(JSON.stringify(res));
-			}
+			if (!res.success) throw new Error(JSON.stringify(res));
 
-			for (let i = 0; i < res.data.records.length; i++) {
-				const sshPublicKey = res.data.records[i].value;
-				if (!(sshPublicKey.service in sshPublicKeysByService)) {
-					sshPublicKeysByService[sshPublicKey.service] = [];
-				}
-				sshPublicKeysByService[sshPublicKey.service].push(sshPublicKey);
-			}
+			records.push(...res.data.records);
 
 			if (typeof res.data.cursor === "string") {
 				cursor = res.data.cursor;
@@ -80,97 +118,75 @@ async function fetchAndRenderKeys(handle) {
 
 		listContainer.removeAttribute("aria-busy");
 
-		const services = Object.keys(sshPublicKeysByService);
-		if (services.length === 0) {
-			listContainer.innerHTML = "<p><em>No SSH keys found. Create one above!</em></p>";
+		if (records.length === 0) {
+			listContainer.innerHTML = "<p><em>No associated keys found. Add one above!</em></p>";
 			return;
 		}
 
-		// Render lists securely to prevent XSS
-		for (const [service, keys] of Object.entries(sshPublicKeysByService)) {
+		// Group by service
+		const byService = {};
+		for (const rec of records) {
+			const svc = rec.value.service || '*';
+			if (!(svc in byService)) byService[svc] = [];
+			byService[svc].push(rec);
+		}
+
+		for (const [service, recs] of Object.entries(byService)) {
 			const article = document.createElement('article');
 
 			const serviceHeader = document.createElement('h3');
 			if (service === "*") {
-				// Auth wildcard: key valid for every service, not a host itself.
-				serviceHeader.textContent = "* (key valid for all your services)";
-			} else if (service.startsWith("*.")) {
-				// Explicit wildcard subdomain: matches any sub-host, so not a
-				// single clickable link. Show the host pattern it serves.
-				serviceHeader.textContent = serviceHostname(service, handle);
+				serviceHeader.textContent = "* (valid for all services)";
 			} else {
-				const host = serviceHostname(service, handle);
-				const serviceLink = document.createElement('a');
-				serviceLink.setAttribute("target", "_blank");
-				serviceLink.href = `https://${host}`;
-				serviceLink.textContent = host;
-				serviceHeader.appendChild(serviceLink)
+				serviceHeader.textContent = `Service: ${service}`;
 			}
-
-			const exampleSSHCommandTemplate = document.getElementById("example-ssh-command").textContent;
-			const exampleSSHCommand = document.createElement('pre');
-			exampleSSHCommand.textContent = exampleSSHCommandTemplate ;
-			exampleSSHCommand.textContent = exampleSSHCommand.textContent.replace(
-				/handle.example.com/g,
-				handle,
-			);
-			if (service !== "*") {
-				// Substitute the real service into the "-R <bind>:..." spec. A
-				// wildcard bind ("*.app") contains a glob the shell would expand,
-				// so single-quote the whole forward spec. Preserve whatever
-				// "<port>:<host>:<port>" tail the template carries.
-				const needsQuote = service.startsWith("*.");
-				exampleSSHCommand.textContent = exampleSSHCommand.textContent.replace(
-					/-R my-cool-service(\S*)/,
-					(_m, rest) => needsQuote ? `-R '${service}${rest}'` : `-R ${service}${rest}`,
-				);
-			}
-
-			const details = document.createElement('details');
-			details.open = true;
-
-			const summary = document.createElement('summary');
-			summary.textContent = `Toggle show/hide`
-			details.appendChild(summary);
+			article.appendChild(serviceHeader);
 
 			const ul = document.createElement('ul');
 			ul.style.listStyleType = 'none';
 			ul.style.paddingLeft = '0';
 
-			keys.forEach(k => {
+			recs.forEach(rec => {
+				const v = rec.value;
 				const li = document.createElement('li');
 				li.className = 'key-list-item';
 
-				const nameStrong = document.createElement('strong');
-				nameStrong.textContent = k.name;
+				const keyIdStrong = document.createElement('strong');
+				keyIdStrong.textContent = 'did:key';
 
 				const dateSmall = document.createElement('small');
-				if (k.createdAt) {
-					dateSmall.textContent = ` (Created: ${new Date(k.createdAt).toLocaleDateString()})`;
+				if (v.createdAt) {
+					dateSmall.textContent = ` (Created: ${new Date(v.createdAt).toLocaleDateString()})`;
 					dateSmall.style.color = "var(--pico-muted-color)";
 				}
 
 				const br = document.createElement('br');
 
-				const keyCode = document.createElement('code');
-				keyCode.textContent = k.key;
-				keyCode.style.fontSize = "0.85em";
-				keyCode.style.display = "block";
-				keyCode.style.marginTop = "0.5rem";
-				keyCode.style.padding = "0.5rem";
-				keyCode.style.backgroundColor = "var(--pico-code-background-color)";
+				const keyIdCode = document.createElement('code');
+				keyIdCode.textContent = v.keyId;
+				keyIdCode.style.fontSize = "0.85em";
+				keyIdCode.style.display = "block";
+				keyIdCode.style.marginTop = "0.5rem";
+				keyIdCode.style.padding = "0.5rem";
+				keyIdCode.style.backgroundColor = "var(--pico-code-background-color)";
 
-				li.appendChild(nameStrong);
+				const pdslsLink = document.createElement('a');
+				pdslsLink.href = `https://pdsls.dev/${rec.uri}`;
+				pdslsLink.target = "_blank";
+				pdslsLink.textContent = "View on pdsls.dev";
+				pdslsLink.style.fontSize = "0.8em";
+				pdslsLink.style.display = "inline-block";
+				pdslsLink.style.marginTop = "0.25rem";
+
+				li.appendChild(keyIdStrong);
 				li.appendChild(dateSmall);
 				li.appendChild(br);
-				li.appendChild(keyCode);
+				li.appendChild(keyIdCode);
+				li.appendChild(pdslsLink);
 				ul.appendChild(li);
 			});
 
-			details.appendChild(ul);
-			article.appendChild(serviceHeader);
-			article.appendChild(exampleSSHCommand);
-			article.appendChild(details);
+			article.appendChild(ul);
 			listContainer.appendChild(article);
 		}
 
@@ -180,10 +196,9 @@ async function fetchAndRenderKeys(handle) {
 	}
 }
 
-// If there was an existing OAuth session, we restore it.
-// Otherwise, we present the login UI to the user.
+// --- Init ---
+
 async function init() {
-	/* Set up form/button handlers */
 	document.getElementById("login-form").onsubmit = function(e) {
 		e.preventDefault();
 		doLogin(e.target.username.value);
@@ -193,9 +208,19 @@ async function init() {
 		doLogin("https://bsky.social");
 	}
 
-	document.getElementById("ssh-public-key-form").onsubmit = function(e) {
+	document.getElementById("associate-form").onsubmit = function(e) {
 		e.preventDefault();
-		doPost(document.getElementById("ssh-public-key-name").value, document.getElementById("ssh-public-key-service").value, document.getElementById("ssh-public-key-key").value);
+		const didKey = document.getElementById("did-key").value.trim();
+		const service = document.getElementById("service").value.trim() || "*";
+		doAssociate(didKey, service);
+	}
+
+	document.getElementById("scan-qr-button").onclick = function() {
+		startQRScanner();
+	}
+
+	document.getElementById("qr-stop-button").onclick = function() {
+		stopQRScanner();
 	}
 
 	document.getElementById("logout-nav").onclick = function() {
@@ -203,10 +228,9 @@ async function init() {
 		window.location.reload();
 	}
 
-	/* Set up the OAuth client */
 	try {
 		oac = await BrowserOAuthClient.load({
-			clientId, // Note: This involves fetching the metadata document. See https://github.com/bluesky-social/atproto/tree/main/packages/oauth/oauth-client-browser#client-metadata for how to avoid this extra round-trip.
+			clientId,
 			handleResolver: 'https://bsky.social',
 		});
 		const result = await oac.init();
@@ -229,20 +253,19 @@ async function init() {
 
 			sessionHandle = res.data.handle;
 			document.getElementById("welcome-message").innerText = `@${res.data.handle}`;
-			document.getElementById("ssh-public-key-container").style.display = "inherit"; // unhide
-			document.getElementById("ssh-public-keys-list-container").style.display = "inherit"; // unhide list section
-			document.getElementById("logout-nav").style.display = "inherit"; // unhide
+			document.getElementById("associate-container").style.display = "inherit";
+			document.getElementById("keys-list-container").style.display = "inherit";
+			document.getElementById("logout-nav").style.display = "inherit";
 
-			// Fetch and render keys
-			await fetchAndRenderKeys(res.data.handle);
+			await fetchAndRenderKeys();
 
-		} else { // there is no existing session
-			document.getElementById("login-container").style.display = "inherit"; // unhide
+		} else {
+			document.getElementById("login-container").style.display = "inherit";
 		}
 	} catch (error) {
 		const msg = `An error occured: ${error}`;
 		document.getElementById("loading-error").innerText = msg;
-		document.getElementById("loading-error").style.display = "inherit"; // unhide
+		document.getElementById("loading-error").style.display = "inherit";
 		return;
 	}
 
@@ -256,7 +279,7 @@ async function doLogin(identifier) {
 	try {
 		await oac.signIn(identifier, {
 			state: 'some value needed later',
-			signal: new AbortController().signal, // Optional, allows to cancel the sign in (and destroy the pending authorization, for better security)
+			signal: new AbortController().signal,
 		})
 		console.log('Never executed');
 	} catch (err) {
@@ -265,46 +288,40 @@ async function doLogin(identifier) {
 	loginButton.removeAttribute("aria-busy");
 }
 
-async function doPost(name, service, key) {
-	const createSSHPublicKeyButton = document.getElementById("ssh-public-key-button");
-	createSSHPublicKeyButton.setAttribute("aria-busy", "true");
+async function doAssociate(didKey, service) {
+	const button = document.getElementById("associate-button");
+	button.setAttribute("aria-busy", "true");
 
 	let res;
 	try {
 		res = await agent.com.atproto.repo.createRecord({
 			repo: agent.did,
-			collection: 'com.fedproxy.sshPublicKey',
+			collection: BADGE_BLUE_KEYS_NSID,
 			record: {
-				$type: 'com.fedproxy.sshPublicKey',
-				key: key.replace(/(\r\n|\n|\r)/g, ''),
-				name: name.replace(/(\r\n|\n|\r)/g, ''),
-				service: service.replace(/(\r\n|\n|\r)/g, ''),
+				$type: BADGE_BLUE_KEYS_NSID,
+				keyId: didKey,
+				challenge: agent.did,
+				service: service,
 				createdAt: new Date().toISOString(),
 			},
 		});
 
-		if (!res.success) {
-			throw new Error(JSON.stringify(res));
-		}
+		if (!res.success) throw new Error(JSON.stringify(res));
 	} catch (err) {
-		document.getElementById("ssh-public-key-form-error").innerText = `${err}`;
-		createSSHPublicKeyButton.removeAttribute("aria-busy");
+		document.getElementById("associate-form-error").innerText = `${err}`;
+		button.removeAttribute("aria-busy");
 		return;
 	}
 
 	const atUri = res.data.uri;
-
-	// show the "success" screen
-	createSSHPublicKeyButton.removeAttribute("aria-busy");
+	button.removeAttribute("aria-busy");
 	document.getElementById("success-pdsls").href = `https://pdsls.dev/${atUri}`;
-	document.getElementById("success-container").style.display = "inherit"; // unhide
+	document.getElementById("success-container").style.display = "inherit";
 
-	// Refetch the keys so the new one appears in the list directly below
-	await fetchAndRenderKeys(sessionHandle);
+	await fetchAndRenderKeys();
 
-	// Reset the form so they can easily create another one
-	document.getElementById("ssh-public-key-form").reset();
-	document.getElementById("ssh-public-key-form-error").innerText = "";
+	document.getElementById("associate-form").reset();
+	document.getElementById("associate-form-error").innerText = "";
 }
 
 document.addEventListener('DOMContentLoaded', init);
