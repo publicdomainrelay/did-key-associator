@@ -1,6 +1,7 @@
 import { BrowserOAuthClient } from '@atproto/oauth-client-browser'
 import { Agent } from '@atproto/api'
 import { toDataURL } from 'qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 
 const BADGE_BLUE_KEYS_NSID = 'com.publicdomainrelay.temp.badgeBlueKeys';
 
@@ -55,73 +56,90 @@ function associationUrl(didKey) {
 
 // --- QR code scanning ---
 
-function isBarcodeDetectorSupported() {
-	return 'BarcodeDetector' in window;
+let html5QrScanner = null; // Html5Qrcode instance for iOS fallback
+
+function didFromScanValue(value) {
+	if (value.startsWith('did:key:') || value.startsWith('did:plc:')) return value;
+	try {
+		const u = new URL(value);
+		const inner = u.hash.slice(1);
+		if (inner.startsWith('did:key:') || inner.startsWith('did:plc:')) return inner;
+	} catch {}
+	return null;
 }
 
 async function startQRScanner() {
 	const container = document.getElementById("qr-scanner-container");
 	const video = document.getElementById("qr-video");
 	const status = document.getElementById("qr-scan-status");
+	container.style.display = "block";
 
-	if (!isBarcodeDetectorSupported()) {
-		status.textContent = "BarcodeDetector not available. Try Chrome, Edge, or Safari 17+.";
-		status.style.color = "#E37474";
-		container.style.display = "block";
-		return;
+	const onScan = (did) => {
+		document.getElementById("did-key").value = did;
+		status.textContent = `Captured: ${did.slice(0, 50)}...`;
+		status.style.color = "#4CAF50";
+		stopQRScanner();
+	};
+
+	// Try BarcodeDetector first (Chrome/Edge)
+	if ('BarcodeDetector' in window) {
+		try {
+			qrStream = await navigator.mediaDevices.getUserMedia({
+				video: { facingMode: "environment" }
+			});
+			video.srcObject = qrStream;
+			video.style.display = '';
+			status.textContent = "Scanning... point camera at a QR code.";
+			status.style.color = "inherit";
+
+			const detector = new BarcodeDetector({ formats: ['qr_code'] });
+
+			const scan = async () => {
+				if (!qrStream) return;
+				try {
+					const barcodes = await detector.detect(video);
+					if (barcodes.length > 0) {
+						const did = didFromScanValue(barcodes[0].rawValue);
+						if (did) { onScan(did); return; }
+						status.textContent = "Scanned but not a did:key/did:plc. Keep scanning.";
+						status.style.color = "#E37474";
+					}
+				} catch (e) { /* may throw on some frames */ }
+				if (qrStream) requestAnimationFrame(scan);
+			};
+			requestAnimationFrame(scan);
+			return;
+		} catch (err) {
+			if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
+		}
 	}
 
+	// Fallback: html5-qrcode (iOS Safari, Firefox)
 	try {
-		qrStream = await navigator.mediaDevices.getUserMedia({
-			video: { facingMode: "environment" }
-		});
-		video.srcObject = qrStream;
-		container.style.display = "block";
+		html5QrScanner = new Html5Qrcode("qr-video");
 		status.textContent = "Scanning... point camera at a QR code.";
 		status.style.color = "inherit";
 
-		const detector = new BarcodeDetector({ formats: ['qr_code'] });
-
-		const scan = async () => {
-			if (!qrStream) return;
-			try {
-				const barcodes = await detector.detect(video);
-				if (barcodes.length > 0) {
-					const value = barcodes[0].rawValue;
-					// Could be bare did:key or our association URL
-					let did = value;
-					if (did.startsWith('did:key:') || did.startsWith('did:plc:')) {
-						// bare did
-					} else {
-						// Try parsing as URL, extract fragment
-						try {
-							const u = new URL(value);
-							const inner = u.hash.slice(1);
-							if (inner.startsWith('did:key:') || inner.startsWith('did:plc:')) did = inner;
-						} catch {}
-					}
-					if (did.startsWith('did:key:') || did.startsWith('did:plc:')) {
-						document.getElementById("did-key").value = did;
-						status.textContent = `Captured: ${did.slice(0, 50)}...`;
-						status.style.color = "#4CAF50";
-						stopQRScanner();
-					} else {
-						status.textContent = `Scanned but not a did:key/did:plc. Keep scanning.`;
-						status.style.color = "#E37474";
-					}
-				}
-			} catch (e) { /* BarcodeDetector may throw on some frames */ }
-			if (qrStream) requestAnimationFrame(scan);
-		};
-		requestAnimationFrame(scan);
+		await html5QrScanner.start(
+			{ facingMode: "environment" },
+			{ fps: 10, qrbox: 250 },
+			(decodedText) => {
+				const did = didFromScanValue(decodedText);
+				if (did) onScan(did);
+			},
+			() => { /* ignore scan errors */ }
+		);
 	} catch (err) {
 		status.textContent = `Camera error: ${err.message}`;
 		status.style.color = "#E37474";
-		container.style.display = "block";
 	}
 }
 
 function stopQRScanner() {
+	if (html5QrScanner) {
+		html5QrScanner.stop().catch(() => {});
+		html5QrScanner = null;
+	}
 	if (qrStream) {
 		qrStream.getTracks().forEach(t => t.stop());
 		qrStream = null;
