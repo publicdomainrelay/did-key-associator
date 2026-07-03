@@ -34,10 +34,16 @@ export function getHashDid() {
   const hash = window.location.hash.slice(1);
   if (!hash) return null;
   if (hash.startsWith('did:key:') || hash.startsWith('did:plc:')) return hash;
+  // key=value format: #plc=did:plc:... or #key=did:key:...
+  const kv = hash.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
+  if (kv) return kv[1];
   try {
     const u = new URL(hash);
     const inner = u.hash.slice(1);
     if (inner.startsWith('did:key:') || inner.startsWith('did:plc:')) return inner;
+    // key=value inside a URL's inner hash
+    const innerKv = inner.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
+    if (innerKv) return innerKv[1];
   } catch {}
   return null;
 }
@@ -46,16 +52,44 @@ export function associationUrl(didKey) {
   return `${window.location.origin}${window.location.pathname}#${encodeURIComponent(didKey)}`;
 }
 
+/* ── Hash survival through OAuth redirect ── */
+const OAUTH_HASH_KEY = 'dka-oauth-hash';
+
+export function saveHashForLogin() {
+  const did = getHashDid();
+  if (did) sessionStorage.setItem(OAUTH_HASH_KEY, did);
+}
+
+export function restoreHashFromLogin() {
+  const did = sessionStorage.getItem(OAUTH_HASH_KEY);
+  if (did) sessionStorage.removeItem(OAUTH_HASH_KEY);
+  return did;
+}
+
+export function clearOAuthHash() {
+  sessionStorage.removeItem(OAUTH_HASH_KEY);
+}
+
+export function isAlreadyAssociated(records, didKey) {
+  if (!didKey || !records) return false;
+  return records.some(r => r.value?.keyId === didKey);
+}
+
 /* ── QR scanning ── */
 let qrStream = null;
 let qrAnimFrame = null;
 
 export function didFromScanValue(value) {
   if (value.startsWith('did:key:') || value.startsWith('did:plc:')) return value;
+  // key=value format
+  const kv = value.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
+  if (kv) return kv[1];
   try {
     const u = new URL(value);
     const inner = u.hash.slice(1);
     if (inner.startsWith('did:key:') || inner.startsWith('did:plc:')) return inner;
+    const innerKv = inner.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
+    if (innerKv) return innerKv[1];
   } catch {}
   return null;
 }

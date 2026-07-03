@@ -1,6 +1,7 @@
 import {
   fetchRecords, doAssociate, doRename, doDelete,
   randomName, parseRkey, stopQRScanner, startQRScanner,
+  clearOAuthHash,
 } from '../main.js';
 import './dka-key-card.js';
 
@@ -143,7 +144,8 @@ export class DkaKeyList extends HTMLElement {
     const link = this.querySelector('#success-pdsls');
     link.href = `https://pdsls.dev/${this._successUri}`;
     banner.classList.remove('hidden');
-    // Clear hash from URL
+    // Clear hash from URL and sessionStorage
+    clearOAuthHash();
     if (window.location.hash) {
       history.replaceState(null, '', window.location.pathname + window.location.search);
     }

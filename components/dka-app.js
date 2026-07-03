@@ -1,4 +1,4 @@
-import { initSession, doLogin, getHashDid } from '../main.js';
+import { initSession, doLogin, getHashDid, saveHashForLogin, restoreHashFromLogin, clearOAuthHash, isAlreadyAssociated, fetchRecords } from '../main.js';
 import './dka-attest-confirm.js';
 import './dka-key-list.js';
 import './dka-share-sheet.js';
@@ -74,6 +74,7 @@ export class DkaApp extends HTMLElement {
       btn.textContent = 'Logging in…';
       this.querySelector('#login-error').textContent = '';
       try {
+        saveHashForLogin();
         await doLogin(this._oac, e.target.username.value);
       } catch (err) {
         this.querySelector('#login-error').textContent = `Login error: ${err}`;
@@ -83,12 +84,13 @@ export class DkaApp extends HTMLElement {
     });
 
     this.querySelector('#bsky-btn').addEventListener('click', () => {
+      saveHashForLogin();
       doLogin(this._oac, 'https://bsky.social');
     });
   }
 
-  renderMain() {
-    const hashDid = getHashDid();
+  async renderMain() {
+    const hashDid = getHashDid() || restoreHashFromLogin();
 
     this.innerHTML = `
       <main class="app-shell">
@@ -102,6 +104,7 @@ export class DkaApp extends HTMLElement {
 
         <dka-attest-confirm id="attest-confirm"
           did-key="${hashDid || ''}"
+          already-associated="false"
           style="${hashDid ? '' : 'display:none;'}">
         </dka-attest-confirm>
 
@@ -113,7 +116,13 @@ export class DkaApp extends HTMLElement {
     const keyList = this.querySelector('#key-list');
     keyList._agent = this._agent;
     keyList._sessionHandle = this._sessionHandle;
-    keyList.refreshKeys();
+    await keyList.refreshKeys();
+
+    // Check if hash DID is already associated
+    if (hashDid && isAlreadyAssociated(keyList._records, hashDid)) {
+      const attest = this.querySelector('#attest-confirm');
+      attest.setAttribute('already-associated', 'true');
+    }
 
     // Attest confirm events
     const attest = this.querySelector('#attest-confirm');
@@ -125,9 +134,14 @@ export class DkaApp extends HTMLElement {
         input.form?.querySelector('#name-input')?.focus();
       }
       attest.style.display = 'none';
+      clearOAuthHash();
+      if (window.location.hash) {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
     });
     attest.addEventListener('dka:ignore', () => {
       attest.style.display = 'none';
+      clearOAuthHash();
       if (window.location.hash) {
         history.replaceState(null, '', window.location.pathname + window.location.search);
       }
