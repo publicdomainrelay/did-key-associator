@@ -1,4 +1,4 @@
-import { initSession, doLogin, getHashDid, saveHashForLogin, restoreHashFromLogin, clearOAuthHash, isAlreadyAssociated, fetchRecords, log } from '../main.js';
+import { initSession, doLogin, getHashDid, saveHashForLogin, restoreHashFromLogin, clearOAuthHash, isAlreadyAssociated, fetchRecords, log, doAssociate, randomName } from '../main.js';
 import './dka-attest-confirm.js';
 import './dka-key-list.js';
 import './dka-share-sheet.js';
@@ -99,7 +99,8 @@ export class DkaApp extends HTMLElement {
 
   async renderMain() {
     const hashDid = getHashDid() || restoreHashFromLogin();
-    log('info', 'app', 'renderMain:hashDid', { hashDid: hashDid || null, source: getHashDid() ? 'url' : restoreHashFromLogin() ? 'sessionStorage' : 'none' });
+    const hashSource = getHashDid() ? 'url' : (hashDid ? 'sessionStorage' : 'none');
+    log('info', 'app', 'renderMain:hashDid', { hashDid: hashDid || null, source: hashSource });
 
     this.innerHTML = `
       <main class="app-shell">
@@ -136,14 +137,21 @@ export class DkaApp extends HTMLElement {
 
     // Attest confirm events
     const attest = this.querySelector('#attest-confirm');
-    attest.addEventListener('dka:attest', () => {
+    attest.addEventListener('dka:attest', async () => {
       log('info', 'app', 'renderMain:attest', { didKey: hashDid });
-      // Pre-fill the associate form with the hash did:key
-      const input = this.querySelector('#did-key-input');
-      if (input) {
-        input.value = hashDid;
-        input.form?.querySelector('#name-input')?.focus();
+      attest.setAttribute('aria-busy', 'true');
+      try {
+        const name = randomName();
+        log('info', 'app', 'attest:associating', { didKey: hashDid, name });
+        await doAssociate(this._agent, { didKey: hashDid, name });
+        log('info', 'app', 'attest:associated', { didKey: hashDid });
+        await keyList.refreshKeys();
+        keyList._showSuccess();
+      } catch (err) {
+        log('error', 'app', 'attest:assocError', { error: String(err) });
+        attest.style.display = 'none';
       }
+      attest.removeAttribute('aria-busy');
       attest.style.display = 'none';
       clearOAuthHash();
       if (window.location.hash) {

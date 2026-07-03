@@ -26,7 +26,7 @@ cat > dist/oauth-client-metadata.json <<'JSON'
   "response_types": [
     "code"
   ],
-  "scope": "atproto repo:com.publicdomainrelay.temp.badgeBlueKeys?action=create,update,delete",
+  "scope": "atproto repo:com.publicdomainrelay.temp.badgeBlueKeys",
   "token_endpoint_auth_method": "none",
   "client_name": "DID Key Associator",
   "client_uri": "https://qr.fedfork.com"
