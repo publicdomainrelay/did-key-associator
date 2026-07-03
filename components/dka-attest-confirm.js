@@ -1,7 +1,10 @@
+import { log } from '../main.js';
+
 export class DkaAttestConfirm extends HTMLElement {
   static get observedAttributes() { return ['did-key', 'already-associated']; }
 
   connectedCallback() {
+    log('debug', 'attest', 'connected');
     this.render();
   }
 
@@ -11,12 +14,16 @@ export class DkaAttestConfirm extends HTMLElement {
   get didKey() { return this.getAttribute('did-key') || ''; }
 
   attributeChangedCallback(name, oldVal, newVal) {
-    if (oldVal !== newVal && this.isConnected) this.render();
+    if (oldVal !== newVal && this.isConnected) {
+      log('debug', 'attest', 'attrChanged', { name, newVal });
+      this.render();
+    }
   }
 
   render() {
     const did = this.getAttribute('did-key') || '';
     const already = this.getAttribute('already-associated') === 'true';
+    log('info', 'attest', 'render', { did: did || null, already, willRender: !!did });
 
     if (!did) { this.innerHTML = ''; return; }
 

@@ -1,4 +1,4 @@
-import { initSession, doLogin, getHashDid, saveHashForLogin, restoreHashFromLogin, clearOAuthHash, isAlreadyAssociated, fetchRecords } from '../main.js';
+import { initSession, doLogin, getHashDid, saveHashForLogin, restoreHashFromLogin, clearOAuthHash, isAlreadyAssociated, fetchRecords, log } from '../main.js';
 import './dka-attest-confirm.js';
 import './dka-key-list.js';
 import './dka-share-sheet.js';
@@ -25,23 +25,29 @@ export class DkaApp extends HTMLElement {
 
   async _init() {
     try {
+      log('debug', 'app', '_init:start');
       const { oac, agent, sessionHandle } = await initSession();
       this._oac = oac;
       this._agent = agent;
       this._sessionHandle = sessionHandle;
 
       if (agent && sessionHandle) {
+        log('info', 'app', '_init:loggedIn', { handle: sessionHandle });
         this.renderMain();
       } else {
+        log('info', 'app', '_init:loggedOut');
         this.renderLogin();
       }
     } catch (err) {
+      log('error', 'app', '_init:error', { error: String(err) });
       this.querySelector('#load-error').classList.remove('hidden');
       this.querySelector('#load-error').textContent = `An error occurred: ${err}`;
     }
   }
 
   renderLogin() {
+    const hashDid = getHashDid();
+    if (hashDid) log('info', 'app', 'renderLogin:hashDetected', { did: hashDid });
     this.innerHTML = `
       <main class="app-shell">
         <header style="margin-bottom:24px;">
@@ -93,6 +99,7 @@ export class DkaApp extends HTMLElement {
 
   async renderMain() {
     const hashDid = getHashDid() || restoreHashFromLogin();
+    log('info', 'app', 'renderMain:hashDid', { hashDid: hashDid || null, source: getHashDid() ? 'url' : restoreHashFromLogin() ? 'sessionStorage' : 'none' });
 
     this.innerHTML = `
       <main class="app-shell">
@@ -122,6 +129,7 @@ export class DkaApp extends HTMLElement {
 
     // Check if hash DID is already associated
     if (hashDid && isAlreadyAssociated(keyList._records, hashDid)) {
+      log('info', 'app', 'renderMain:alreadyAssociated', { didKey: hashDid });
       const attest = this.querySelector('#attest-confirm');
       attest.setAttribute('already-associated', 'true');
     }
@@ -129,6 +137,7 @@ export class DkaApp extends HTMLElement {
     // Attest confirm events
     const attest = this.querySelector('#attest-confirm');
     attest.addEventListener('dka:attest', () => {
+      log('info', 'app', 'renderMain:attest', { didKey: hashDid });
       // Pre-fill the associate form with the hash did:key
       const input = this.querySelector('#did-key-input');
       if (input) {
@@ -142,6 +151,7 @@ export class DkaApp extends HTMLElement {
       }
     });
     attest.addEventListener('dka:ignore', () => {
+      log('info', 'app', 'renderMain:ignore', { didKey: hashDid });
       attest.style.display = 'none';
       clearOAuthHash();
       if (window.location.hash) {

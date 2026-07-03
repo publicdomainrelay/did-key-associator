@@ -5,6 +5,13 @@ import jsQR from 'jsqr';
 
 export const BADGE_BLUE_KEYS_NSID = 'com.publicdomainrelay.temp.badgeBlueKeys';
 
+/* ── Structured JSON logger ── */
+export function log(level, component, event, data = {}) {
+  const line = JSON.stringify({ ts: new Date().toISOString(), level, component, event, ...data });
+  if (level === 'error' || level === 'warn') console.error(line);
+  else console.log(line);
+}
+
 /* ── OAuth client id ── */
 export function buildClientID() {
   const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -32,21 +39,35 @@ export function parseRkey(uri) {
 
 export function getHashDid() {
   let hash = window.location.hash.slice(1);
-  if (!hash) return null;
+  log('debug', 'hash', 'getHashDid:read', { hashPresent: !!hash, hashLen: hash.length });
+  if (!hash) { log('debug', 'hash', 'getHashDid:empty'); return null; }
   // Browser may or may not percent-decode the fragment.
   try { hash = decodeURIComponent(hash); } catch {}
-  if (hash.startsWith('did:key:') || hash.startsWith('did:plc:')) return hash;
+  if (hash.startsWith('did:key:') || hash.startsWith('did:plc:')) {
+    log('info', 'hash', 'getHashDid:direct', { did: hash });
+    return hash;
+  }
   // key=value format: #plc=did:plc:... or #key=did:key:...
   const kv = hash.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
-  if (kv) return kv[1];
+  if (kv) {
+    log('info', 'hash', 'getHashDid:keyValue', { format: hash.substring(0, hash.indexOf('=')), did: kv[1] });
+    return kv[1];
+  }
   try {
     const u = new URL(hash);
     const inner = u.hash.slice(1);
-    if (inner.startsWith('did:key:') || inner.startsWith('did:plc:')) return inner;
+    if (inner.startsWith('did:key:') || inner.startsWith('did:plc:')) {
+      log('info', 'hash', 'getHashDid:urlInner', { did: inner });
+      return inner;
+    }
     // key=value inside a URL's inner hash
     const innerKv = inner.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
-    if (innerKv) return innerKv[1];
+    if (innerKv) {
+      log('info', 'hash', 'getHashDid:urlInnerKeyValue', { did: innerKv[1] });
+      return innerKv[1];
+    }
   } catch {}
+  log('warn', 'hash', 'getHashDid:unrecognized', { hash });
   return null;
 }
 
@@ -59,22 +80,36 @@ const OAUTH_HASH_KEY = 'dka-oauth-hash';
 
 export function saveHashForLogin() {
   const did = getHashDid();
-  if (did) sessionStorage.setItem(OAUTH_HASH_KEY, did);
+  if (did) {
+    sessionStorage.setItem(OAUTH_HASH_KEY, did);
+    log('info', 'hash', 'saveHashForLogin:stored', { did });
+  } else {
+    log('debug', 'hash', 'saveHashForLogin:noHash');
+  }
 }
 
 export function restoreHashFromLogin() {
   const did = sessionStorage.getItem(OAUTH_HASH_KEY);
-  if (did) sessionStorage.removeItem(OAUTH_HASH_KEY);
+  if (did) {
+    sessionStorage.removeItem(OAUTH_HASH_KEY);
+    log('info', 'hash', 'restoreHashFromLogin:restored', { did });
+  } else {
+    log('debug', 'hash', 'restoreHashFromLogin:empty');
+  }
   return did;
 }
 
 export function clearOAuthHash() {
+  const had = sessionStorage.getItem(OAUTH_HASH_KEY);
   sessionStorage.removeItem(OAUTH_HASH_KEY);
+  if (had) log('debug', 'hash', 'clearOAuthHash:cleared', { did: had });
 }
 
 export function isAlreadyAssociated(records, didKey) {
-  if (!didKey || !records) return false;
-  return records.some(r => r.value?.keyId === didKey);
+  if (!didKey || !records) { log('debug', 'attest', 'isAlreadyAssociated:noInput'); return false; }
+  const found = records.some(r => r.value?.keyId === didKey);
+  log('info', 'attest', 'isAlreadyAssociated', { didKey, recordCount: records.length, found });
+  return found;
 }
 
 /* ── QR scanning ── */
@@ -82,19 +117,27 @@ let qrStream = null;
 let qrAnimFrame = null;
 
 export function didFromScanValue(value) {
+  log('debug', 'qr', 'didFromScanValue:input', { valueLen: value?.length || 0 });
   let v = value;
   try { v = decodeURIComponent(v); } catch {}
-  if (v.startsWith('did:key:') || v.startsWith('did:plc:')) return v;
+  if (v.startsWith('did:key:') || v.startsWith('did:plc:')) {
+    log('info', 'qr', 'didFromScanValue:direct', { did: v });
+    return v;
+  }
   // key=value format
   const kv = v.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
-  if (kv) return kv[1];
+  if (kv) { log('info', 'qr', 'didFromScanValue:keyValue', { did: kv[1] }); return kv[1]; }
   try {
     const u = new URL(v);
     const inner = u.hash.slice(1);
-    if (inner.startsWith('did:key:') || inner.startsWith('did:plc:')) return inner;
+    if (inner.startsWith('did:key:') || inner.startsWith('did:plc:')) {
+      log('info', 'qr', 'didFromScanValue:urlInner', { did: inner });
+      return inner;
+    }
     const innerKv = inner.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
-    if (innerKv) return innerKv[1];
+    if (innerKv) { log('info', 'qr', 'didFromScanValue:urlInnerKeyValue', { did: innerKv[1] }); return innerKv[1]; }
   } catch {}
+  log('warn', 'qr', 'didFromScanValue:noDid', { value });
   return null;
 }
 
@@ -374,24 +417,36 @@ export async function initSession() {
 
   if (result) {
     const { session, state } = result;
-    if (state != null) console.log(`${session.sub} was successfully authenticated (state: ${state})`);
-    else console.log(`${session.sub} was restored (last active session)`);
+    const isFreshLogin = state != null;
+    log('info', 'oauth', isFreshLogin ? 'initSession:freshLogin' : 'initSession:restored', {
+      sub: session.sub, hasState: isFreshLogin,
+    });
 
     // Restore hash DID from OAuth state (carried through redirect protocol-level).
     if (state && typeof state === 'string' && state.startsWith('dka:')) {
-      sessionStorage.setItem('dka-oauth-hash', state.slice(4));
+      const hashDid = state.slice(4);
+      sessionStorage.setItem('dka-oauth-hash', hashDid);
+      log('info', 'oauth', 'initSession:hashFromState', { hashDid });
+    } else if (state) {
+      log('debug', 'oauth', 'initSession:stateNoDkaPrefix', { statePrefix: state.substring(0, 10) });
     }
 
     const agent = new Agent(session);
     const res = await agent.com.atproto.server.getSession();
-    if (!res.success) throw new Error(JSON.stringify(res));
+    if (!res.success) {
+      log('error', 'oauth', 'initSession:getSessionFailed', { error: JSON.stringify(res) });
+      throw new Error(JSON.stringify(res));
+    }
 
+    log('info', 'oauth', 'initSession:ok', { handle: res.data.handle });
     return { oac, agent, sessionHandle: res.data.handle };
   }
+  log('info', 'oauth', 'initSession:noSession');
   return { oac, agent: null, sessionHandle: null };
 }
 
 export async function doLogin(oac, identifier, state) {
+  log('info', 'oauth', 'doLogin:start', { identifier, hasHashState: state?.startsWith('dka:') });
   await oac.signIn(identifier, {
     state: state || 'some value needed later',
     signal: new AbortController().signal,

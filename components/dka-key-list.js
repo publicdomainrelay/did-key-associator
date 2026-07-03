@@ -1,7 +1,7 @@
 import {
   fetchRecords, doAssociate, doRename, doDelete,
   randomName, parseRkey, stopQRScanner, startQRScanner,
-  clearOAuthHash,
+  clearOAuthHash, log,
 } from '../main.js';
 import './dka-key-card.js';
 
@@ -77,12 +77,15 @@ export class DkaKeyList extends HTMLElement {
       try {
         const didKey = this.querySelector('#did-key-input').value.trim();
         const name = this.querySelector('#name-input').value.trim() || randomName();
+        log('info', 'assoc', 'doAssociate:start', { didKey, name });
         const res = await doAssociate(this._agent, { didKey, name });
         this._successUri = res.data.uri;
+        log('info', 'assoc', 'doAssociate:ok', { uri: res.data.uri });
         this.querySelector('#assoc-form').reset();
         await this.refreshKeys();
         this._showSuccess();
       } catch (err) {
+        log('error', 'assoc', 'doAssociate:error', { error: String(err) });
         this.querySelector('#assoc-error').textContent = `${err}`;
       }
       btn.removeAttribute('aria-busy');
@@ -140,6 +143,7 @@ export class DkaKeyList extends HTMLElement {
   }
 
   _showSuccess() {
+    log('info', 'assoc', '_showSuccess', { uri: this._successUri });
     const banner = this.querySelector('#success-banner');
     const link = this.querySelector('#success-pdsls');
     link.href = `https://pdsls.dev/${this._successUri}`;
