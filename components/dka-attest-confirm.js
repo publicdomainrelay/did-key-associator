@@ -1,7 +1,7 @@
 import { log } from '../main.js';
 
 export class DkaAttestConfirm extends HTMLElement {
-  static get observedAttributes() { return ['did-key', 'already-associated']; }
+  static get observedAttributes() { return ['did-key', 'already-associated', 'requester-did']; }
 
   connectedCallback() {
     log('debug', 'attest', 'connected');
@@ -22,10 +22,13 @@ export class DkaAttestConfirm extends HTMLElement {
 
   render() {
     const did = this.getAttribute('did-key') || '';
+    const requesterDid = this.getAttribute('requester-did') || '';
     const already = this.getAttribute('already-associated') === 'true';
-    log('info', 'attest', 'render', { did: did || null, already, willRender: !!did });
+    const isRequester = !!requesterDid;
+    const displayDid = isRequester ? requesterDid : did;
+    log('info', 'attest', 'render', { did: displayDid || null, already, isRequester, willRender: !!displayDid });
 
-    if (!did) { this.innerHTML = ''; return; }
+    if (!displayDid) { this.innerHTML = ''; return; }
 
     if (already) {
       this.innerHTML = `
@@ -36,7 +39,7 @@ export class DkaAttestConfirm extends HTMLElement {
               This key is already associated with your account.
             </p>
             <div class="key-code modal-key-code">
-              <span>${this._escape(did)}</span>
+              <span>${this._escape(displayDid)}</span>
             </div>
             <button class="btn btn-outline btn-block" id="attest-dismiss-btn">
               OK — dismiss
@@ -50,28 +53,52 @@ export class DkaAttestConfirm extends HTMLElement {
       return;
     }
 
-    this.innerHTML = `
-      <div class="modal-backdrop">
-        <div class="modal-card attest-card">
-          <h2>Is this your key?</h2>
-          <p class="text-muted mb-3" style="font-size:13.5px;line-height:1.55;">
-            Publicly attesting this <code>did:key</code> belongs to your account.
-            This doesn't grant it access to anything — it just tells the network you operate it.
-          </p>
-          <div class="key-code modal-key-code">
-            <span>${this._escape(did)}</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:10px;">
-            <button class="btn btn-primary btn-block" id="attest-confirm-btn">
-              Yes, this is mine — attest publicly
-            </button>
-            <button class="btn btn-outline btn-block" id="attest-ignore-btn">
-              Not mine — ignore
-            </button>
+    if (isRequester) {
+      this.innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal-card attest-card">
+            <h2>Is this your requester?</h2>
+            <p class="text-muted mb-3" style="font-size:13.5px;line-height:1.55;">
+              Confirm you want to associate with this requester. This will notify the requester to proceed with your compute contract.
+            </p>
+            <div class="key-code modal-key-code">
+              <span>${this._escape(requesterDid)}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <button class="btn btn-primary btn-block" id="attest-confirm-btn">
+                Yes, this is my requester
+              </button>
+              <button class="btn btn-outline btn-block" id="attest-ignore-btn">
+                Not mine — ignore
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    `;
+      `;
+    } else {
+      this.innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal-card attest-card">
+            <h2>Is this your key?</h2>
+            <p class="text-muted mb-3" style="font-size:13.5px;line-height:1.55;">
+              Publicly attesting this <code>did:key</code> belongs to your account.
+              This doesn't grant it access to anything — it just tells the network you operate it.
+            </p>
+            <div class="key-code modal-key-code">
+              <span>${this._escape(did)}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <button class="btn btn-primary btn-block" id="attest-confirm-btn">
+                Yes, this is mine — attest publicly
+              </button>
+              <button class="btn btn-outline btn-block" id="attest-ignore-btn">
+                Not mine — ignore
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
     this.querySelector('#attest-confirm-btn').addEventListener('click', () => {
       this.dispatchEvent(new CustomEvent('dka:attest', { bubbles: true }));

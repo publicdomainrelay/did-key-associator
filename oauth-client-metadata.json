@@ -12,7 +12,7 @@
   "response_types": [
     "code"
   ],
-  "scope": "atproto repo:com.publicdomainrelay.temp.badgeBlueKeys",
+  "scope": "atproto repo:com.publicdomainrelay.temp.badgeBlueKeys rpc:com.publicdomainrelay.temp.requester.associateConfirm?aud=*",
   "token_endpoint_auth_method": "none",
   "client_name": "DID Key Associator",
   "client_uri": "https://qr.fedfork.com"

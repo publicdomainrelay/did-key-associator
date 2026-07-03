@@ -1,9 +1,15 @@
 import { BrowserOAuthClient } from '@atproto/oauth-client-browser';
 import { Agent } from '@atproto/api';
+import { XrpcClient } from '@atproto/xrpc';
 import { toDataURL } from 'qrcode';
 import jsQR from 'jsqr';
 
 export const BADGE_BLUE_KEYS_NSID = 'com.publicdomainrelay.temp.badgeBlueKeys';
+const ASSOCIATE_CONFIRM_NSID = 'com.publicdomainrelay.temp.requester.associateConfirm';
+
+const ASSOCIATE_LEXICON_STUBS = [
+  { lexicon: 1, id: ASSOCIATE_CONFIRM_NSID, defs: { main: { type: 'procedure' } } },
+];
 
 /* ── Structured JSON logger ── */
 export function log(level, component, event, data = {}) {
@@ -17,7 +23,7 @@ export function buildClientID() {
   const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
   if (isLocal) {
     return `http://localhost?${new URLSearchParams({
-      scope: `atproto repo:${BADGE_BLUE_KEYS_NSID}?action=create,update,delete`,
+      scope: `atproto repo:${BADGE_BLUE_KEYS_NSID}?action=create,update,delete rpc:${ASSOCIATE_CONFIRM_NSID}?aud=*`,
       redirect_uri: Object.assign(new URL(window.location.origin), { hostname: '127.0.0.1' }).href,
     })}`;
   }
@@ -386,6 +392,57 @@ export async function doAssociate(agent, { didKey, name, service }) {
   return res;
 }
 
+export async function doRequesterAssociate(agent, requesterDid) {
+  // Resolve requester DID doc to find #requester_associate service
+  let serviceEndpoint = null;
+  try {
+    const didDoc = await (await fetch(
+      requesterDid.startsWith('did:web:')
+        ? `https://${requesterDid.slice('did:web:'.length)}/.well-known/did.json`
+        : `https://plc.directory/${requesterDid}`
+    )).json();
+    const svc = (didDoc.service || []).find((s) => s.id === '#requester_associate' || s.id === 'requester_associate');
+    serviceEndpoint = svc?.serviceEndpoint;
+  } catch { /* fallback */ }
+
+  if (!serviceEndpoint) {
+    throw new Error('Requester has no #requester_associate service');
+  }
+
+  // Call associateConfirm via PDS proxy with retry
+  const client = new XrpcClient(agent, ASSOCIATE_LEXICON_STUBS);
+  let lastErr = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 3000));
+    try {
+      const res = await client.call(ASSOCIATE_CONFIRM_NSID, {}, {}, {
+        headers: { 'atproto-proxy': `${requesterDid}#requester_associate` },
+      });
+      if (res.success) {
+        // CLI confirmed — now create the key association record
+        const keyRes = await agent.com.atproto.repo.createRecord({
+          repo: agent.did,
+          collection: BADGE_BLUE_KEYS_NSID,
+          record: {
+            $type: BADGE_BLUE_KEYS_NSID,
+            keyId: requesterDid,
+            name: `requester-${requesterDid.slice(-8)}`,
+            challenge: agent.did,
+            service: 'requester_associate',
+            createdAt: new Date().toISOString(),
+          },
+        });
+        if (!keyRes.success) throw new Error(JSON.stringify(keyRes));
+        return { ok: true, requesterDid: res.data.requesterDid, associationUri: keyRes.data.uri };
+      }
+      lastErr = new Error(JSON.stringify(res.data));
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('associateConfirm failed after retries');
+}
+
 export async function doRename(agent, rec, rkey, newName) {
   const updated = { ...rec.value, name: newName };
   const res = await agent.com.atproto.repo.putRecord({
@@ -412,6 +469,11 @@ export async function initSession() {
   const oac = await BrowserOAuthClient.load({
     clientId,
     handleResolver: 'https://bsky.social',
+    sessionStore: {
+      async get(key) { const v = localStorage.getItem(key); return v ? JSON.parse(v) : undefined; },
+      async set(key, val) { localStorage.setItem(key, JSON.stringify(val)); },
+      async del(key) { localStorage.removeItem(key); },
+    },
   });
   const result = await oac.init();
 

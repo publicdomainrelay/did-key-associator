@@ -1,4 +1,4 @@
-import { initSession, doLogin, getHashDid, saveHashForLogin, restoreHashFromLogin, clearOAuthHash, isAlreadyAssociated, fetchRecords, log, doAssociate, randomName } from '../main.js';
+import { initSession, doLogin, getHashDid, saveHashForLogin, restoreHashFromLogin, clearOAuthHash, isAlreadyAssociated, fetchRecords, log, doAssociate, doRequesterAssociate, randomName } from '../main.js';
 import './dka-attest-confirm.js';
 import './dka-key-list.js';
 import './dka-share-sheet.js';
@@ -8,8 +8,46 @@ export class DkaApp extends HTMLElement {
     this._oac = null;
     this._agent = null;
     this._sessionHandle = null;
+    this._state = 'loading'; // 'loading' | 'login' | 'main'
+    this._boundHashChange = this._onHashChange.bind(this);
+    window.addEventListener('hashchange', this._boundHashChange);
+    window.addEventListener('popstate', this._boundHashChange);
     this.renderLoading();
     this._init();
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener('hashchange', this._boundHashChange);
+    window.removeEventListener('popstate', this._boundHashChange);
+  }
+
+  _onHashChange() {
+    log('info', 'app', 'hashChange', { hash: window.location.hash, state: this._state });
+    if (this._state === 'main') {
+      this._updateAttestFromHash();
+    }
+    // Login page: no re-render needed — login handlers call getHashDid() fresh each submit
+  }
+
+  _updateAttestFromHash() {
+    const hashDid = getHashDid();
+    log('info', 'app', 'hashChange:updateAttest', { hashDid: hashDid || null });
+    const attest = this.querySelector('#attest-confirm');
+    if (!attest) return;
+    if (hashDid) {
+      const isPlc = hashDid.startsWith('did:plc:');
+      attest.setAttribute('did-key', hashDid);
+      if (isPlc) attest.setAttribute('requester-did', hashDid);
+      else attest.removeAttribute('requester-did');
+      attest.removeAttribute('already-associated');
+      attest.style.display = '';
+      const keyList = this.querySelector('#key-list');
+      if (keyList && keyList._records && !isPlc && isAlreadyAssociated(keyList._records, hashDid)) {
+        attest.setAttribute('already-associated', 'true');
+      }
+    } else {
+      attest.style.display = 'none';
+    }
   }
 
   renderLoading() {
@@ -46,6 +84,7 @@ export class DkaApp extends HTMLElement {
   }
 
   renderLogin() {
+    this._state = 'login';
     const hashDid = getHashDid();
     if (hashDid) log('info', 'app', 'renderLogin:hashDetected', { did: hashDid });
     this.innerHTML = `
@@ -98,6 +137,7 @@ export class DkaApp extends HTMLElement {
   }
 
   async renderMain() {
+    this._state = 'main';
     const hashDid = getHashDid() || restoreHashFromLogin();
     const hashSource = getHashDid() ? 'url' : (hashDid ? 'sessionStorage' : 'none');
     log('info', 'app', 'renderMain:hashDid', { hashDid: hashDid || null, source: hashSource });
@@ -129,7 +169,8 @@ export class DkaApp extends HTMLElement {
     await keyList.refreshKeys();
 
     // Check if hash DID is already associated
-    if (hashDid && isAlreadyAssociated(keyList._records, hashDid)) {
+    const isPlc = hashDid && hashDid.startsWith('did:plc:');
+    if (hashDid && !isPlc && isAlreadyAssociated(keyList._records, hashDid)) {
       log('info', 'app', 'renderMain:alreadyAssociated', { didKey: hashDid });
       const attest = this.querySelector('#attest-confirm');
       attest.setAttribute('already-associated', 'true');
@@ -137,19 +178,36 @@ export class DkaApp extends HTMLElement {
 
     // Attest confirm events
     const attest = this.querySelector('#attest-confirm');
+    if (isPlc) {
+      attest.setAttribute('requester-did', hashDid);
+    }
     attest.addEventListener('dka:attest', async () => {
-      log('info', 'app', 'renderMain:attest', { didKey: hashDid });
+      // Re-read hash fresh — hashDid/isPlc captured at renderMain time may be stale
+      const currentDid = getHashDid() || restoreHashFromLogin();
+      const currentIsPlc = currentDid && currentDid.startsWith('did:plc:');
+      log('info', 'app', 'renderMain:attest', { didKey: currentDid, isPlc: currentIsPlc });
       attest.setAttribute('aria-busy', 'true');
+      const confirmBtn = attest.querySelector('#attest-confirm-btn');
+      if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Confirming…'; }
       try {
-        const name = randomName();
-        log('info', 'app', 'attest:associating', { didKey: hashDid, name });
-        await doAssociate(this._agent, { didKey: hashDid, name });
-        log('info', 'app', 'attest:associated', { didKey: hashDid });
-        await keyList.refreshKeys();
-        keyList._showSuccess();
+        if (currentIsPlc) {
+          log('info', 'app', 'attest:requesterAssociate', { requesterDid: currentDid });
+          await doRequesterAssociate(this._agent, currentDid);
+          log('info', 'app', 'attest:requesterAssociated', { requesterDid: currentDid });
+          await keyList.refreshKeys();
+          keyList._showSuccess();
+        } else {
+          const name = randomName();
+          log('info', 'app', 'attest:associating', { didKey: currentDid, name });
+          await doAssociate(this._agent, { didKey: currentDid, name });
+          log('info', 'app', 'attest:associated', { didKey: currentDid });
+          await keyList.refreshKeys();
+          keyList._showSuccess();
+        }
       } catch (err) {
         log('error', 'app', 'attest:assocError', { error: String(err) });
-        attest.style.display = 'none';
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = currentIsPlc ? 'Yes, this is my requester' : 'Yes, this is mine — attest publicly'; }
+        return;
       }
       attest.removeAttribute('aria-busy');
       attest.style.display = 'none';

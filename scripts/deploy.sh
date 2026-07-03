@@ -3,47 +3,25 @@ set -xeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-export SSH_TARGET="${SSH_TARGET:-root@qr.fedfork.com}"
+SSH_TARGET="${SSH_TARGET:-root@qr.fedfork.com}"
+SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes"
 
 cd "$PROJECT_DIR"
 
 # ── Build ────────────────────────────────────────────────────────────────
 deno run -A build.ts
 
-# ── Patch oauth metadata for production domain ───────────────────────────
-cat > dist/oauth-client-metadata.json <<'JSON'
-{
-  "client_id": "https://qr.fedfork.com/oauth-client-metadata.json",
-  "dpop_bound_access_tokens": true,
-  "application_type": "web",
-  "redirect_uris": [
-    "https://qr.fedfork.com"
-  ],
-  "grant_types": [
-    "authorization_code",
-    "refresh_token"
-  ],
-  "response_types": [
-    "code"
-  ],
-  "scope": "atproto repo:com.publicdomainrelay.temp.badgeBlueKeys",
-  "token_endpoint_auth_method": "none",
-  "client_name": "DID Key Associator",
-  "client_uri": "https://qr.fedfork.com"
-}
-JSON
+# ── Copy oauth metadata for production domain ────────────────────────────
+cp oauth-client-metadata.json dist/oauth-client-metadata.json
 
 # ── Stage on remote ──────────────────────────────────────────────────────
-ssh -o StrictHostKeyChecking=accept-new "${SSH_TARGET}" bash -xe <<'EOF'
-rm -rf /tmp/stage
-mkdir -p /tmp/stage
-EOF
+ssh ${SSH_OPTS} "${SSH_TARGET}" "rm -rf /tmp/stage && mkdir -p /tmp/stage"
 
-scp -o StrictHostKeyChecking=accept-new dist/* "${SSH_TARGET}":/tmp/stage/
-scp -o StrictHostKeyChecking=accept-new Caddyfile "${SSH_TARGET}":/tmp/stage/Caddyfile
+scp ${SSH_OPTS} dist/* "${SSH_TARGET}":/tmp/stage/
+scp ${SSH_OPTS} Caddyfile "${SSH_TARGET}":/tmp/stage/Caddyfile
 
 # ── Remote setup ─────────────────────────────────────────────────────────
-ssh -o StrictHostKeyChecking=accept-new "${SSH_TARGET}" bash -xe <<'REMOTE_EOF'
+ssh ${SSH_OPTS} "${SSH_TARGET}" bash -xe <<'REMOTE_EOF'
 
 # Install Caddy if absent (official Cloudsmith repo).
 if ! command -v caddy >/dev/null 2>&1; then
