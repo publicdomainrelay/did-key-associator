@@ -15,6 +15,10 @@
   --chip-all-text: #7FE3C6;
   --chip-svc-bg: #3A2E1B;
   --chip-svc-text: #E3B77F;
+  --chip-bidder-bg: #1B3450;
+  --chip-bidder-text: #7EB8E8;
+  --chip-requester-bg: #451E35;
+  --chip-requester-text: #E87EB8;
   --radius: 14px;
   --radius-sm: 6px;
   --font: 'Inter', sans-serif;
@@ -84,7 +88,9 @@ input::placeholder { color: var(--text-faint); }
   font-family: var(--font-mono); white-space: nowrap;
 }
 .chip-all { background: var(--chip-all-bg); color: var(--chip-all-text); }
-.chip-service { background: var(--chip-svc-bg); color: var(--chip-svc-text); }
+.chip-bidder-service { background: var(--chip-bidder-bg); color: var(--chip-bidder-text); }
+.chip-requester-associate { background: var(--chip-requester-bg); color: var(--chip-requester-text); }
+.chip-service { background: hsl(var(--chip-hue, 40), 35%, 18%); color: hsl(var(--chip-hue, 40), 50%, 70%); }
 
 /* ── Mono inset box for did:key ── */
 .key-code {
