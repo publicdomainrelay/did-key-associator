@@ -22,17 +22,19 @@ export class DkaAttestConfirm extends HTMLElement {
 
     if (already) {
       this.innerHTML = `
-        <div class="card attest-card">
-          <h2>Already associated</h2>
-          <p class="text-muted mb-3" style="font-size:13.5px;line-height:1.55;">
-            This key is already associated with your account.
-          </p>
-          <div class="key-code">
-            <span>${this._escape(did)}</span>
+        <div class="modal-backdrop">
+          <div class="modal-card attest-card">
+            <h2>Already associated</h2>
+            <p class="text-muted mb-3" style="font-size:13.5px;line-height:1.55;">
+              This key is already associated with your account.
+            </p>
+            <div class="key-code modal-key-code">
+              <span>${this._escape(did)}</span>
+            </div>
+            <button class="btn btn-outline btn-block" id="attest-dismiss-btn">
+              OK — dismiss
+            </button>
           </div>
-          <button class="btn btn-outline btn-block" id="attest-dismiss-btn">
-            OK — dismiss
-          </button>
         </div>
       `;
       this.querySelector('#attest-dismiss-btn').addEventListener('click', () => {
@@ -42,22 +44,24 @@ export class DkaAttestConfirm extends HTMLElement {
     }
 
     this.innerHTML = `
-      <div class="card attest-card">
-        <h2>Is this your key?</h2>
-        <p class="text-muted mb-3" style="font-size:13.5px;line-height:1.55;">
-          Publicly attesting this <code>did:key</code> belongs to your account.
-          This doesn't grant it access to anything — it just tells the network you operate it.
-        </p>
-        <div class="key-code">
-          <span>${this._escape(did)}</span>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          <button class="btn btn-primary btn-block" id="attest-confirm-btn">
-            Yes, this is mine — attest publicly
-          </button>
-          <button class="btn btn-outline btn-block" id="attest-ignore-btn">
-            Not mine — ignore
-          </button>
+      <div class="modal-backdrop">
+        <div class="modal-card attest-card">
+          <h2>Is this your key?</h2>
+          <p class="text-muted mb-3" style="font-size:13.5px;line-height:1.55;">
+            Publicly attesting this <code>did:key</code> belongs to your account.
+            This doesn't grant it access to anything — it just tells the network you operate it.
+          </p>
+          <div class="key-code modal-key-code">
+            <span>${this._escape(did)}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <button class="btn btn-primary btn-block" id="attest-confirm-btn">
+              Yes, this is mine — attest publicly
+            </button>
+            <button class="btn btn-outline btn-block" id="attest-ignore-btn">
+              Not mine — ignore
+            </button>
+          </div>
         </div>
       </div>
     `;
