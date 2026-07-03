@@ -1,0 +1,5 @@
+qr.fedfork.com {
+	root * /var/www/qr.fedfork.com
+	encode gzip
+	file_server
+}
