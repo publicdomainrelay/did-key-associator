@@ -74,8 +74,9 @@ export class DkaApp extends HTMLElement {
       btn.textContent = 'Logging in…';
       this.querySelector('#login-error').textContent = '';
       try {
+        const hashDid = getHashDid();
         saveHashForLogin();
-        await doLogin(this._oac, e.target.username.value);
+        await doLogin(this._oac, e.target.username.value, hashDid ? `dka:${hashDid}` : undefined);
       } catch (err) {
         this.querySelector('#login-error').textContent = `Login error: ${err}`;
       }
@@ -84,8 +85,9 @@ export class DkaApp extends HTMLElement {
     });
 
     this.querySelector('#bsky-btn').addEventListener('click', () => {
+      const hashDid = getHashDid();
       saveHashForLogin();
-      doLogin(this._oac, 'https://bsky.social');
+      doLogin(this._oac, 'https://bsky.social', hashDid ? `dka:${hashDid}` : undefined);
     });
   }
 

@@ -31,8 +31,10 @@ export function parseRkey(uri) {
 }
 
 export function getHashDid() {
-  const hash = window.location.hash.slice(1);
+  let hash = window.location.hash.slice(1);
   if (!hash) return null;
+  // Browser may or may not percent-decode the fragment.
+  try { hash = decodeURIComponent(hash); } catch {}
   if (hash.startsWith('did:key:') || hash.startsWith('did:plc:')) return hash;
   // key=value format: #plc=did:plc:... or #key=did:key:...
   const kv = hash.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
@@ -80,12 +82,14 @@ let qrStream = null;
 let qrAnimFrame = null;
 
 export function didFromScanValue(value) {
-  if (value.startsWith('did:key:') || value.startsWith('did:plc:')) return value;
+  let v = value;
+  try { v = decodeURIComponent(v); } catch {}
+  if (v.startsWith('did:key:') || v.startsWith('did:plc:')) return v;
   // key=value format
-  const kv = value.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
+  const kv = v.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
   if (kv) return kv[1];
   try {
-    const u = new URL(value);
+    const u = new URL(v);
     const inner = u.hash.slice(1);
     if (inner.startsWith('did:key:') || inner.startsWith('did:plc:')) return inner;
     const innerKv = inner.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
@@ -373,6 +377,11 @@ export async function initSession() {
     if (state != null) console.log(`${session.sub} was successfully authenticated (state: ${state})`);
     else console.log(`${session.sub} was restored (last active session)`);
 
+    // Restore hash DID from OAuth state (carried through redirect protocol-level).
+    if (state && typeof state === 'string' && state.startsWith('dka:')) {
+      sessionStorage.setItem('dka-oauth-hash', state.slice(4));
+    }
+
     const agent = new Agent(session);
     const res = await agent.com.atproto.server.getSession();
     if (!res.success) throw new Error(JSON.stringify(res));
@@ -382,9 +391,9 @@ export async function initSession() {
   return { oac, agent: null, sessionHandle: null };
 }
 
-export async function doLogin(oac, identifier) {
+export async function doLogin(oac, identifier, state) {
   await oac.signIn(identifier, {
-    state: 'some value needed later',
+    state: state || 'some value needed later',
     signal: new AbortController().signal,
   });
 }

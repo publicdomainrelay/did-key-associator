@@ -31,7 +31,7 @@ const html = `<!DOCTYPE html>
 </head>
 <body>
   <dka-app></dka-app>
-  <script type="module" src="./dka-app.js"></script>
+  <script type="module" src="./dka-app.js?v=${Date.now()}"></script>
 </body>
 </html>
 `;

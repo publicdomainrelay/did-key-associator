@@ -1,5 +1,8 @@
 qr.fedfork.com {
 	root * /var/www/qr.fedfork.com
 	encode gzip
+	header {
+		Cache-Control "no-cache"
+	}
 	file_server
 }
