@@ -15,6 +15,7 @@ export class VaultChip extends HTMLElement {
 
   _chipKind(svc) {
     if (svc === 'bidder_service') return 'bidder-service';
+    if (svc === 'bidder_associate') return 'bidder-service';
     if (svc === 'requester_associate') return 'requester-associate';
     return 'service';
   }

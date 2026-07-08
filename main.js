@@ -54,7 +54,7 @@ export function getHashDid() {
     return hash;
   }
   // key=value format: #plc=did:plc:... or #key=did:key:...
-  const kv = hash.match(/^(?:plc|key)=(did:(?:plc|key):\S+)$/);
+  const kv = hash.match(/^(?:plc|key|bdr)=(did:(?:plc|key):\S+)$/);
   if (kv) {
     log('info', 'hash', 'getHashDid:keyValue', { format: hash.substring(0, hash.indexOf('=')), did: kv[1] });
     return kv[1];
@@ -74,6 +74,14 @@ export function getHashDid() {
     }
   } catch {}
   log('warn', 'hash', 'getHashDid:unrecognized', { hash });
+  return null;
+}
+
+export function getHashKind() {
+  const hash = window.location.hash.slice(1);
+  if (hash.startsWith('bdr=')) return 'bidder';
+  if (hash.startsWith('plc=')) return 'requester';
+  if (hash.startsWith('key=') || hash.startsWith('did:key:')) return 'key';
   return null;
 }
 
@@ -434,6 +442,54 @@ export async function doRequesterAssociate(agent, requesterDid) {
         });
         if (!keyRes.success) throw new Error(JSON.stringify(keyRes));
         return { ok: true, requesterDid: res.data.requesterDid, associationUri: keyRes.data.uri };
+      }
+      lastErr = new Error(JSON.stringify(res.data));
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('associateConfirm failed after retries');
+}
+
+export async function doBidderAssociate(agent, bidderDid) {
+  let serviceEndpoint = null;
+  try {
+    const didDoc = await (await fetch(
+      bidderDid.startsWith('did:web:')
+        ? `https://${bidderDid.slice('did:web:'.length)}/.well-known/did.json`
+        : `https://plc.directory/${bidderDid}`
+    )).json();
+    const svc = (didDoc.service || []).find((s) => s.id === '#bidder_associate' || s.id === 'bidder_associate');
+    serviceEndpoint = svc?.serviceEndpoint;
+  } catch { /* fallback */ }
+
+  if (!serviceEndpoint) {
+    throw new Error('Bidder has no #bidder_associate service');
+  }
+
+  const client = new XrpcClient(agent, ASSOCIATE_LEXICON_STUBS);
+  let lastErr = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 3000));
+    try {
+      const res = await client.call(ASSOCIATE_CONFIRM_NSID, {}, {}, {
+        headers: { 'atproto-proxy': `${bidderDid}#bidder_associate` },
+      });
+      if (res.success) {
+        const keyRes = await agent.com.atproto.repo.createRecord({
+          repo: agent.did,
+          collection: BADGE_BLUE_KEYS_NSID,
+          record: {
+            $type: BADGE_BLUE_KEYS_NSID,
+            keyId: bidderDid,
+            name: `bidder-${bidderDid.slice(-8)}`,
+            challenge: agent.did,
+            service: 'bidder_associate',
+            createdAt: new Date().toISOString(),
+          },
+        });
+        if (!keyRes.success) throw new Error(JSON.stringify(keyRes));
+        return { ok: true, bidderDid: res.data.requesterDid, associationUri: keyRes.data.uri };
       }
       lastErr = new Error(JSON.stringify(res.data));
     } catch (err) {

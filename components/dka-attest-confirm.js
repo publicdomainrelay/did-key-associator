@@ -1,7 +1,7 @@
 import { log } from '../main.js';
 
 export class DkaAttestConfirm extends HTMLElement {
-  static get observedAttributes() { return ['did-key', 'already-associated', 'requester-did']; }
+  static get observedAttributes() { return ['did-key', 'already-associated', 'requester-did', 'bidder-did']; }
 
   connectedCallback() {
     log('debug', 'attest', 'connected');
@@ -23,10 +23,12 @@ export class DkaAttestConfirm extends HTMLElement {
   render() {
     const did = this.getAttribute('did-key') || '';
     const requesterDid = this.getAttribute('requester-did') || '';
+    const bidderDid = this.getAttribute('bidder-did') || '';
     const already = this.getAttribute('already-associated') === 'true';
     const isRequester = !!requesterDid;
-    const displayDid = isRequester ? requesterDid : did;
-    log('info', 'attest', 'render', { did: displayDid || null, already, isRequester, willRender: !!displayDid });
+    const isBidder = !!bidderDid;
+    const displayDid = isRequester ? requesterDid : isBidder ? bidderDid : did;
+    log('info', 'attest', 'render', { did: displayDid || null, already, isRequester, isBidder, willRender: !!displayDid });
 
     if (!displayDid) { this.innerHTML = ''; return; }
 
@@ -53,7 +55,29 @@ export class DkaAttestConfirm extends HTMLElement {
       return;
     }
 
-    if (isRequester) {
+    if (isBidder) {
+      this.innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal-card attest-card">
+            <h2>Is this your bidder?</h2>
+            <p class="text-muted mb-3" style="font-size:13.5px;line-height:1.55;">
+              Confirm you want to associate with this bidder. This tells the network you trust this compute provider.
+            </p>
+            <div class="key-code modal-key-code">
+              <span>${this._escape(bidderDid)}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <button class="btn btn-primary btn-block" id="attest-confirm-btn">
+                Yes, this is my bidder
+              </button>
+              <button class="btn btn-outline btn-block" id="attest-ignore-btn">
+                Not mine — ignore
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (isRequester) {
       this.innerHTML = `
         <div class="modal-backdrop">
           <div class="modal-card attest-card">
