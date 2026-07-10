@@ -1,7 +1,8 @@
-import { initSession, doLogin, getHashDid, getHashKind, saveHashForLogin, restoreHashFromLogin, clearOAuthHash, isAlreadyAssociated, fetchRecords, log, doAssociate, doRequesterAssociate, doBidderAssociate, randomName } from '../main.js';
+import { initSession, doLogin, getHashDid, getHashKind, getHashOauthParams, saveHashForLogin, restoreHashFromLogin, clearOAuthHash, isAlreadyAssociated, fetchRecords, log, doAssociate, doRequesterAssociate, doBidderAssociate, randomName } from '../main.js';
 import './dka-attest-confirm.js';
 import './dka-key-list.js';
 import './dka-share-sheet.js';
+import './dka-oauth-transfer.js';
 
 export class DkaApp extends HTMLElement {
   connectedCallback() {
@@ -12,6 +13,21 @@ export class DkaApp extends HTMLElement {
     this._boundHashChange = this._onHashChange.bind(this);
     window.addEventListener('hashchange', this._boundHashChange);
     window.addEventListener('popstate', this._boundHashChange);
+
+    // OAuth callback — handle synchronously before renderLoading, else
+    // query params (code+state+iss) get lost before the async _init runs.
+    const qp = new URLSearchParams(window.location.search);
+    if (qp.get('code') && qp.get('state') && qp.get('iss')) {
+      log('info', 'app', 'connectedCallback:oauthCallback', { hasCode: true });
+      this._state = 'login';
+      this.renderLogin();
+      // Block hashChange re-render until transfer completes (success/error
+      // sets _transferDone=true, or a new QR scan changes the hash).
+      this._oauthHash = window.location.hash;
+      this._transferDone = true;
+      return;
+    }
+
     this.renderLoading();
     this._init();
   }
@@ -21,12 +37,32 @@ export class DkaApp extends HTMLElement {
     window.removeEventListener('popstate', this._boundHashChange);
   }
 
+  _escape(s) {
+    const el = document.createElement('span');
+    el.textContent = String(s);
+    return el.innerHTML;
+  }
+
   _onHashChange() {
     log('info', 'app', 'hashChange', { hash: window.location.hash, state: this._state });
     if (this._state === 'main') {
+      const oauthParams = getHashOauthParams();
+      if (oauthParams) {
+        this.renderMain();
+        return;
+      }
       this._updateAttestFromHash();
+    } else if (this._state === 'login') {
+      const oauthParams = getHashOauthParams();
+      if (oauthParams) {
+        // If hash changed (new QR scan), allow re-render.
+        if (this._oauthHash !== window.location.hash) {
+          this._transferDone = false;
+        }
+        if (this._transferDone) return;
+        this.renderLogin();
+      }
     }
-    // Login page: no re-render needed — login handlers call getHashDid() fresh each submit
   }
 
   _updateAttestFromHash() {
@@ -34,7 +70,8 @@ export class DkaApp extends HTMLElement {
     log('info', 'app', 'hashChange:updateAttest', { hashDid: hashDid || null });
     const attest = this.querySelector('#attest-confirm');
     if (!attest) return;
-    if (hashDid) {
+    // Never show attest modal for oauth transfer values
+    if (hashDid && !hashDid.startsWith('oauth=') && !hashDid.startsWith('oauth:')) {
       const kind = getHashKind();
       attest.setAttribute('did-key', hashDid);
       attest.removeAttribute('requester-did');
@@ -66,6 +103,19 @@ export class DkaApp extends HTMLElement {
   async _init() {
     try {
       log('debug', 'app', '_init:start');
+
+      // Skip BrowserOAuthClient init if returning from our custom OAuth callback.
+      // BrowserOAuthClient would try to handle code+state itself and hang.
+      const qp = new URLSearchParams(window.location.search);
+      if (qp.get('code') && qp.get('state') && qp.get('iss')) {
+        log('info', 'app', '_init:oauthCallback', { hasCode: true });
+        this._oac = null;
+        this._agent = null;
+        this._sessionHandle = null;
+        this.renderLogin();
+        return;
+      }
+
       const { oac, agent, sessionHandle } = await initSession();
       this._oac = oac;
       this._agent = agent;
@@ -89,6 +139,27 @@ export class DkaApp extends HTMLElement {
     this._state = 'login';
     const hashDid = getHashDid();
     if (hashDid) log('info', 'app', 'renderLogin:hashDetected', { did: hashDid });
+
+    // Check for oauth transfer hash — show transfer component instead of login
+    let oauthParams = getHashOauthParams();
+    if (!oauthParams) {
+      // Restore from sessionStorage (survived OAuth redirect)
+      const restored = restoreHashFromLogin();
+      if (restored && restored.startsWith('oauth=')) {
+        window.location.hash = restored;
+        return;
+      }
+    }
+    if (oauthParams) {
+      this.innerHTML = `
+        <dka-oauth-transfer
+          cli-did="${this._escape(oauthParams.oauth)}"
+          nonce="${this._escape(oauthParams.n)}">
+        </dka-oauth-transfer>
+      `;
+      return;
+    }
+
     this.innerHTML = `
       <main class="app-shell">
         <header style="margin-bottom:24px;">
@@ -140,6 +211,26 @@ export class DkaApp extends HTMLElement {
 
   async renderMain() {
     this._state = 'main';
+
+    // Check for oauth transfer hash FIRST (before hashDid consumes sessionStorage)
+    let oauthParams = getHashOauthParams();
+    if (!oauthParams) {
+      const restored = restoreHashFromLogin();
+      if (restored && restored.startsWith('oauth=')) {
+        window.location.hash = restored;
+        return;
+      }
+    }
+    if (oauthParams) {
+      this.innerHTML = `
+        <dka-oauth-transfer
+          cli-did="${this._escape(oauthParams.oauth)}"
+          nonce="${this._escape(oauthParams.n)}">
+        </dka-oauth-transfer>
+      `;
+      return;
+    }
+
     const hashDid = getHashDid() || restoreHashFromLogin();
     const hashSource = getHashDid() ? 'url' : (hashDid ? 'sessionStorage' : 'none');
     log('info', 'app', 'renderMain:hashDid', { hashDid: hashDid || null, source: hashSource });

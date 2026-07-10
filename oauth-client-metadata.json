@@ -12,7 +12,7 @@
   "response_types": [
     "code"
   ],
-  "scope": "atproto repo:com.publicdomainrelay.temp.badgeBlueKeys rpc:com.publicdomainrelay.temp.requester.associateConfirm?aud=*",
+  "scope": "atproto repo:com.publicdomainrelay.temp.market.offering?action=create&action=update repo:com.publicdomainrelay.temp.market.bid?action=create repo:com.publicdomainrelay.temp.market.bids.free?action=create repo:com.publicdomainrelay.temp.market.receipt?action=create repo:com.publicdomainrelay.temp.market.event?action=create repo:com.publicdomainrelay.temp.badgeBlueKeys?action=create repo:com.publicdomainrelay.temp.market.bidderAssociation?action=create repo:com.publicdomainrelay.temp.compute.config.wif.simple?action=create repo:com.publicdomainrelay.temp.compute.vm?action=create repo:com.publicdomainrelay.temp.market.rfp?action=create repo:com.publicdomainrelay.temp.market.accept?action=create repo:com.publicdomainrelay.temp.compute.events.vm.delete?action=create repo:com.fedproxy.rbac?action=create rpc:com.publicdomainrelay.temp.market.submitRfp?aud=* rpc:com.publicdomainrelay.temp.market.submitAccept?aud=* rpc:com.publicdomainrelay.temp.market.submitBid?aud=* rpc:com.publicdomainrelay.temp.market.submitEvent?aud=* rpc:com.publicdomainrelay.temp.requester.associateConfirm?aud=*",
   "token_endpoint_auth_method": "none",
   "client_name": "DID Key Associator",
   "client_uri": "https://qr.fedfork.com"

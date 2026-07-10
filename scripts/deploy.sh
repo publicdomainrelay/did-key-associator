@@ -8,22 +8,33 @@ SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=
 
 cd "$PROJECT_DIR"
 
-# ── Build ────────────────────────────────────────────────────────────────
+# ── Build frontend ──────────────────────────────────────────────────────────
 deno run -A build.ts
 
-# ── Copy oauth metadata for production domain ────────────────────────────
+# ── Copy oauth metadata for production domain ───────────────────────────────
 cp oauth-client-metadata.json dist/oauth-client-metadata.json
 
-# ── Stage on remote ──────────────────────────────────────────────────────
+# ── Stage on remote ─────────────────────────────────────────────────────────
 ssh ${SSH_OPTS} "${SSH_TARGET}" "rm -rf /tmp/stage && mkdir -p /tmp/stage"
 
 scp ${SSH_OPTS} dist/* "${SSH_TARGET}":/tmp/stage/
 scp ${SSH_OPTS} Caddyfile "${SSH_TARGET}":/tmp/stage/Caddyfile
+scp ${SSH_OPTS} hono-backend/mod.ts "${SSH_TARGET}":/tmp/stage/hono-backend-mod.ts
+scp ${SSH_OPTS} deno.json "${SSH_TARGET}":/tmp/stage/deno.json
+scp ${SSH_OPTS} deno.lock "${SSH_TARGET}":/tmp/stage/deno.lock
 
-# ── Remote setup ─────────────────────────────────────────────────────────
+# ── Remote setup ────────────────────────────────────────────────────────────
 ssh ${SSH_OPTS} "${SSH_TARGET}" bash -xe <<'REMOTE_EOF'
 
-# Install Caddy if absent (official Cloudsmith repo).
+# ── Deno ────────────────────────────────────────────────────────────────────
+if ! command -v deno >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y unzip curl
+  curl -fsSL https://deno.land/install.sh | sh
+  ln -sf /root/.deno/bin/deno /usr/local/bin/deno
+fi
+
+# ── Caddy ───────────────────────────────────────────────────────────────────
 if ! command -v caddy >/dev/null 2>&1; then
   apt-get update
   apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
@@ -33,22 +44,56 @@ if ! command -v caddy >/dev/null 2>&1; then
   apt-get install -y caddy
 fi
 
-# Deploy Caddyfile (before wildcard — so it's not swept into /var/www).
+# ── Backend server directories ──────────────────────────────────────────────
+mkdir -p /opt/qr-fedfork
+cp /tmp/stage/hono-backend-mod.ts /opt/qr-fedfork/mod.ts
+cp /tmp/stage/deno.json /opt/qr-fedfork/deno.json
+cp /tmp/stage/deno.lock /opt/qr-fedfork/deno.lock
+
+# ── Backend systemd unit ────────────────────────────────────────────────────
+cat > /etc/systemd/system/qr-fedfork-backend.service <<'UNIT'
+[Unit]
+Description=qr.fedfork.com OAuth QR backend
+After=network.target network-online.target
+Requires=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/qr-fedfork
+ExecStart=/usr/local/bin/deno run -A --unstable-kv mod.ts
+Environment=PORT=5557
+Environment=KV_PATH=/opt/qr-fedfork/kv.db
+Restart=always
+RestartSec=2
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now qr-fedfork-backend
+systemctl restart qr-fedfork-backend
+sleep 2
+systemctl status --no-pager qr-fedfork-backend || true
+
+# ── Caddy ───────────────────────────────────────────────────────────────────
 mv /tmp/stage/Caddyfile /etc/caddy/Caddyfile
 
-# Deploy static files.
+# Deploy static files
 mkdir -p /var/www/qr.fedfork.com
 rm -rf /var/www/qr.fedfork.com/*
 mv /tmp/stage/* /var/www/qr.fedfork.com/
 chown -R caddy:caddy /var/www/qr.fedfork.com
 
-# Caddy systemd unit — run as root for port 80/443 bind.
+# Caddy systemd unit — run as root for port 80/443 bind
 cat > /etc/systemd/system/caddy.service <<'UNIT'
 [Unit]
 Description=Caddy
 Documentation=https://caddyserver.com/docs/
-After=network.target network-online.target
-Requires=network-online.target
+After=network.target network-online.target qr-fedfork-backend.service
+Requires=network-online.target qr-fedfork-backend.service
 
 [Service]
 Type=notify

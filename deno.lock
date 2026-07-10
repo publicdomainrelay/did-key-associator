@@ -1,11 +1,18 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@hono/hono@^4.12.28": "4.12.28",
     "npm:@atproto/api@0.16.4": "0.16.4",
+    "npm:@atproto/crypto@~0.5.4": "0.5.4",
     "npm:@atproto/oauth-client-browser@0.3.29": "0.3.29",
     "npm:@atproto/xrpc@0.8.0": "0.8.0",
     "npm:jsqr@1.4.0": "1.4.0",
     "npm:qrcode@1.5.4": "1.5.4"
+  },
+  "jsr": {
+    "@hono/hono@4.12.28": {
+      "integrity": "4f109a4673ee3131191be485affc98131508d8fcf5621ffa24775f4205526d92"
+    }
   },
   "npm": {
     "@atproto-labs/did-resolver@0.2.0": {
@@ -83,6 +90,14 @@
         "@atproto/lex-json@0.1.2",
         "@atproto/syntax@0.6.3",
         "zod"
+      ]
+    },
+    "@atproto/crypto@0.5.4": {
+      "integrity": "sha512-UR0BkuYNYuFtw+dA+y/oPPxzX0SWRnGJ+1Cfh/jGP1BvjRUyezK3omjpeLms5fYrXbM9vnfX+ckJFJqkBgLOdw==",
+      "dependencies": [
+        "@noble/curves",
+        "@noble/hashes",
+        "uint8arrays@5.1.1"
       ]
     },
     "@atproto/did@0.1.5": {
@@ -250,6 +265,15 @@
         "@atproto/lexicon@0.7.3",
         "zod"
       ]
+    },
+    "@noble/curves@1.9.7": {
+      "integrity": "sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==",
+      "dependencies": [
+        "@noble/hashes"
+      ]
+    },
+    "@noble/hashes@1.8.0": {
+      "integrity": "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="
     },
     "ansi-regex@5.0.1": {
       "integrity": "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="
@@ -447,7 +471,9 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@hono/hono@^4.12.28",
       "npm:@atproto/api@0.16.4",
+      "npm:@atproto/crypto@~0.5.4",
       "npm:@atproto/oauth-client-browser@0.3.29",
       "npm:@atproto/xrpc@0.8.0",
       "npm:jsqr@1.4.0",

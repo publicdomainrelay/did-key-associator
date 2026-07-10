@@ -1,7 +1,9 @@
 {
   "imports": {
     "@atproto/api": "npm:@atproto/api@0.16.4",
+    "@atproto/crypto": "npm:@atproto/crypto@^0.5.4",
     "@atproto/oauth-client-browser": "npm:@atproto/oauth-client-browser@0.3.29",
+    "@hono/hono": "jsr:@hono/hono@^4.12.28",
     "jsqr": "npm:jsqr@1.4.0",
     "qrcode": "npm:qrcode@1.5.4",
     "@atproto/xrpc": "npm:@atproto/xrpc@0.8.0"

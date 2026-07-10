@@ -82,7 +82,20 @@ export function getHashKind() {
   if (hash.startsWith('bdr=')) return 'bidder';
   if (hash.startsWith('plc=')) return 'requester';
   if (hash.startsWith('key=') || hash.startsWith('did:key:')) return 'key';
+  if (hash.startsWith('oauth=')) return 'oauth';
   return null;
+}
+
+export function getHashOauthParams() {
+  const hash = window.location.hash.slice(1);
+  if (!hash.startsWith('oauth=')) return null;
+  const params = {};
+  for (const part of hash.split('&')) {
+    const [k, v] = part.split('=');
+    if (k && v) params[decodeURIComponent(k)] = decodeURIComponent(v);
+  }
+  log('info', 'hash', 'getHashOauthParams', { oauth: params.oauth || null, hasNonce: !!params.n });
+  return params.oauth ? params : null;
 }
 
 export function associationUrl(didKey) {
@@ -94,9 +107,13 @@ const OAUTH_HASH_KEY = 'dka-oauth-hash';
 
 export function saveHashForLogin() {
   const did = getHashDid();
+  const oauthParams = getHashOauthParams();
   if (did) {
     sessionStorage.setItem(OAUTH_HASH_KEY, did);
     log('info', 'hash', 'saveHashForLogin:stored', { did });
+  } else if (oauthParams) {
+    sessionStorage.setItem(OAUTH_HASH_KEY, `oauth=${oauthParams.oauth}&n=${oauthParams.n}`);
+    log('info', 'hash', 'saveHashForLogin:storedOauth', { oauth: oauthParams.oauth });
   } else {
     log('debug', 'hash', 'saveHashForLogin:noHash');
   }
@@ -540,8 +557,17 @@ export async function initSession() {
       sub: session.sub, hasState: isFreshLogin,
     });
 
-    // Restore hash DID from OAuth state (carried through redirect protocol-level).
-    if (state && typeof state === 'string' && state.startsWith('dka:')) {
+    // Restore hash from OAuth state (carried through redirect protocol-level).
+    if (state && typeof state === 'string' && state.startsWith('dka-oauth:')) {
+      // State format: dka-oauth:did:plc:xxx:32hexnonce
+      // DID contains colons, so split on last ':'
+      const inner = state.slice(10);
+      const lastColon = inner.lastIndexOf(':');
+      const cliDid = inner.slice(0, lastColon);
+      const nonce = inner.slice(lastColon + 1);
+      sessionStorage.setItem('dka-oauth-hash', `oauth=${cliDid}&n=${nonce}`);
+      log('info', 'oauth', 'initSession:hashFromStateOauth', { cliDid, nonce });
+    } else if (state && typeof state === 'string' && state.startsWith('dka:')) {
       const hashDid = state.slice(4);
       sessionStorage.setItem('dka-oauth-hash', hashDid);
       log('info', 'oauth', 'initSession:hashFromState', { hashDid });

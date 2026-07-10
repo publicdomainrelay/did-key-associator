@@ -1,4 +1,9 @@
 qr.fedfork.com {
+	# API routes → Deno backend
+	handle /xrpc/* {
+		reverse_proxy 127.0.0.1:5557
+	}
+	# Static files
 	root * /var/www/qr.fedfork.com
 	encode gzip
 	header {
