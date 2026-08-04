@@ -548,7 +548,27 @@ export async function initSession() {
       async del(key) { localStorage.removeItem(key); },
     },
   });
-  const result = await oac.init();
+
+  // A stored OAuth session can go stale — revoked by the PDS, consumed by an
+  // earlier session transfer, refresh token expired. init() or getSession()
+  // then throws ("Session expired"). Never hard-fail the page: clear the dead
+  // session and degrade to logged-out so the QR / session-transfer flow still
+  // renders.
+  const clearStoredSessions = () => {
+    const PREFIX = '@@atproto/oauth-client-browser';
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith(PREFIX)) localStorage.removeItem(key);
+    }
+  };
+
+  let result;
+  try {
+    result = await oac.init();
+  } catch (err) {
+    log('error', 'oauth', 'initSession:initFailed', { error: String(err) });
+    clearStoredSessions();
+    return { oac, agent: null, sessionHandle: null };
+  }
 
   if (result) {
     const { session, state } = result;
@@ -576,10 +596,20 @@ export async function initSession() {
     }
 
     const agent = new Agent(session);
-    const res = await agent.com.atproto.server.getSession();
+    let res;
+    try {
+      res = await agent.com.atproto.server.getSession();
+    } catch (err) {
+      // Stale session: PDS rejected it (e.g. "Session expired"). Drop it and
+      // treat as logged-out instead of throwing to the whole app.
+      log('error', 'oauth', 'initSession:getSessionFailed', { error: String(err) });
+      clearStoredSessions();
+      return { oac, agent: null, sessionHandle: null };
+    }
     if (!res.success) {
       log('error', 'oauth', 'initSession:getSessionFailed', { error: JSON.stringify(res) });
-      throw new Error(JSON.stringify(res));
+      clearStoredSessions();
+      return { oac, agent: null, sessionHandle: null };
     }
 
     log('info', 'oauth', 'initSession:ok', { handle: res.data.handle });
