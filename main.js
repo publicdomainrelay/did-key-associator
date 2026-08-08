@@ -3,6 +3,7 @@ import { Agent } from '@atproto/api';
 import { XrpcClient } from '@atproto/xrpc';
 import { toDataURL } from 'qrcode';
 import jsQR from 'jsqr';
+import { OAUTH_SCOPE_LOCALHOST } from './generated/oauth-scope.js';
 
 export const BADGE_BLUE_KEYS_NSID = 'com.publicdomainrelay.temp.badgeBlueKeys';
 const ASSOCIATE_CONFIRM_NSID = 'com.publicdomainrelay.temp.requester.associateConfirm';
@@ -23,7 +24,7 @@ export function buildClientID() {
   const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
   if (isLocal) {
     return `http://localhost?${new URLSearchParams({
-      scope: `atproto repo:${BADGE_BLUE_KEYS_NSID}?action=create,update,delete rpc:${ASSOCIATE_CONFIRM_NSID}?aud=*`,
+      scope: OAUTH_SCOPE_LOCALHOST,
       redirect_uri: Object.assign(new URL(window.location.origin), { hostname: '127.0.0.1' }).href,
     })}`;
   }

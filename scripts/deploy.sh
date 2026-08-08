@@ -9,10 +9,9 @@ SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=
 cd "$PROJECT_DIR"
 
 # ── Build frontend ──────────────────────────────────────────────────────────
+# build.ts generates dist/oauth-client-metadata.json with the oauth-scope
+# package's scope injected (source metadata carries no scope field).
 deno run -A build.ts
-
-# ── Copy oauth metadata for production domain ───────────────────────────────
-cp oauth-client-metadata.json dist/oauth-client-metadata.json
 
 # ── Stage on remote ─────────────────────────────────────────────────────────
 ssh ${SSH_OPTS} "${SSH_TARGET}" "rm -rf /tmp/stage && mkdir -p /tmp/stage"

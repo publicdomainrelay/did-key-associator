@@ -1,5 +1,6 @@
 import { startOAuth, getParState, clearParState, handleOAuthCallback } from '../lib/atproto-oauth.js';
 import { saveHashForLogin, log } from '../main.js';
+import { OAUTH_SCOPE_FULL } from '../generated/oauth-scope.js';
 
 const OAUTH_QR_NSID = 'com.fedfork.atprotoOauthQR';
 
@@ -85,7 +86,7 @@ export class DkaOauthTransfer extends HTMLElement {
         saveHashForLogin();
         const clientId = `https://${window.location.host}/oauth-client-metadata.json`;
         const redirectUri = (window.location.origin + window.location.pathname).replace(/\/+$/, '');
-        const scope = 'atproto repo:com.publicdomainrelay.temp.market.offering?action=create&action=update repo:com.publicdomainrelay.temp.market.bid?action=create repo:com.publicdomainrelay.temp.market.bids.free?action=create repo:com.publicdomainrelay.temp.market.receipt?action=create repo:com.publicdomainrelay.temp.market.event?action=create repo:com.publicdomainrelay.temp.badgeBlueKeys?action=create repo:com.publicdomainrelay.temp.market.bidderAssociation?action=create repo:com.publicdomainrelay.temp.compute.config.wif.simple?action=create repo:com.publicdomainrelay.temp.compute.vm?action=create repo:com.publicdomainrelay.temp.market.rfp?action=create repo:com.publicdomainrelay.temp.market.accept?action=create repo:com.publicdomainrelay.temp.compute.events.vm.delete?action=create repo:com.publicdomainrelay.temp.compute.events.vm.onNetwork?action=create repo:com.publicdomainrelay.temp.auth.allowlist.rbacDid?action=create repo:com.fedproxy.rbac?action=create rpc:com.publicdomainrelay.temp.market.submitRfp?aud=* rpc:com.publicdomainrelay.temp.market.submitAccept?aud=* rpc:com.publicdomainrelay.temp.market.submitBid?aud=* rpc:com.publicdomainrelay.temp.market.submitEvent?aud=* rpc:com.publicdomainrelay.temp.requester.associateConfirm?aud=*';
+        const scope = OAUTH_SCOPE_FULL;
         const { authUrl } = await startOAuth(handle, clientId, redirectUri, scope, `${this._cliDid}|${this._nonce}`);
         log('info', 'oauth-transfer', 'redirecting', { handle, authUrl: authUrl.slice(0, 80) });
         window.location.href = authUrl;
